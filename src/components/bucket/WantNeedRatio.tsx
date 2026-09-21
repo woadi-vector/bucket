@@ -10,7 +10,9 @@ export function WantNeedRatio({ transactions }: { transactions: Transaction[] })
     <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-baseline justify-between">
         <p className="text-xs uppercase tracking-[0.15em] text-muted-foreground">This month</p>
-        <p className="text-xs text-muted-foreground tabular-nums">{needs}/{total}</p>
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {needs}/{total}
+        </p>
       </div>
       <div className="mt-2 flex items-baseline gap-2">
         <div className="text-3xl font-semibold tabular-nums">{pct}%</div>

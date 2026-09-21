@@ -23,7 +23,16 @@ import { ParentInbox } from "@/components/bucket/ParentInbox";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
-import { Plus, Sparkles, Volume2, VolumeX, PlayCircle, ShoppingCart, ScanLine, Loader2 } from "lucide-react";
+import {
+  Plus,
+  Sparkles,
+  Volume2,
+  VolumeX,
+  PlayCircle,
+  ShoppingCart,
+  ScanLine,
+  Loader2,
+} from "lucide-react";
 import { useBucketSounds } from "@/lib/use-bucket-sounds";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
@@ -35,7 +44,11 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Bucket — Decide before you spend" },
-      { name: "description", content: "A calm budgeting app that pauses you before each purchase to decide want vs. need and pick a bucket." },
+      {
+        name: "description",
+        content:
+          "A calm budgeting app that pauses you before each purchase to decide want vs. need and pick a bucket.",
+      },
     ],
   }),
   component: Index,
@@ -43,8 +56,8 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const [buckets, setBuckets] = useState<Bucket[]>(initialBuckets);
-  const [startingBalances, setStartingBalances] = useState<Record<string, number>>(
-    () => Object.fromEntries(initialBuckets.map((b) => [b.id, b.balance])),
+  const [startingBalances, setStartingBalances] = useState<Record<string, number>>(() =>
+    Object.fromEntries(initialBuckets.map((b) => [b.id, b.balance])),
   );
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [pending, setPending] = useState<PendingWant[]>([]);
@@ -94,7 +107,12 @@ function Index() {
   const [muted, setMuted] = useState(true);
   const [justUpdatedId, setJustUpdatedId] = useState<string | null>(null);
   const [tab, setTab] = useState<"buckets" | "pending" | "family">("buckets");
-  const [demoPrefill, setDemoPrefill] = useState<{ amount: number; label: string; intent?: "want" | "need"; bucketId?: string } | null>(null);
+  const [demoPrefill, setDemoPrefill] = useState<{
+    amount: number;
+    label: string;
+    intent?: "want" | "need";
+    bucketId?: string;
+  } | null>(null);
   const [demoActive, setDemoActive] = useState(false);
   const [demoStep, setDemoStep] = useState(0);
   const [demoPaused, setDemoPaused] = useState(false);
@@ -110,7 +128,13 @@ function Index() {
 
   const total = useMemo(() => buckets.reduce((s, b) => s + b.balance, 0), [buckets]);
 
-  const handleConfirm = (data: { amount: number; label: string; bucketId: string; intent: "want" | "need"; readinessTag?: ReadinessTag | null }) => {
+  const handleConfirm = (data: {
+    amount: number;
+    label: string;
+    bucketId: string;
+    intent: "want" | "need";
+    readinessTag?: ReadinessTag | null;
+  }) => {
     setBuckets((prev) =>
       prev.map((b) => (b.id === data.bucketId ? { ...b, balance: b.balance - data.amount } : b)),
     );
@@ -132,7 +156,12 @@ function Index() {
     else playWant();
   };
 
-  const handleSleepOnIt = (data: { amount: number; label: string; bucketId: string; readinessTag?: ReadinessTag | null }) => {
+  const handleSleepOnIt = (data: {
+    amount: number;
+    label: string;
+    bucketId: string;
+    readinessTag?: ReadinessTag | null;
+  }) => {
     setPending((prev) => [
       {
         id: crypto.randomUUID(),
@@ -282,9 +311,7 @@ function Index() {
   // -------- Scripted demo --------
   const resetDemoState = useCallback(() => {
     setBuckets(initialBuckets);
-    setStartingBalances(
-      Object.fromEntries(initialBuckets.map((b) => [b.id, b.balance])),
-    );
+    setStartingBalances(Object.fromEntries(initialBuckets.map((b) => [b.id, b.balance])));
     setTransactions([]);
     setPending([]);
     setParentRequests([]);
@@ -403,7 +430,8 @@ function Index() {
     lastRunStepRef.current = 0;
   }, []);
 
-  const currentStep = demoActive && demoStep > 0 ? demoSteps[Math.min(demoStep, demoSteps.length) - 1] : null;
+  const currentStep =
+    demoActive && demoStep > 0 ? demoSteps[Math.min(demoStep, demoSteps.length) - 1] : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -541,14 +569,16 @@ function Index() {
               Buckets
             </TabBtn>
             <TabBtn active={tab === "pending"} onClick={() => setTab("pending")}>
-              Pending{pending.length > 0 && (
+              Pending
+              {pending.length > 0 && (
                 <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
                   {pending.length}
                 </span>
               )}
             </TabBtn>
             <TabBtn active={tab === "family"} onClick={() => setTab("family")}>
-              Family{parentRequests.some((r) => r.status === "pending") && (
+              Family
+              {parentRequests.some((r) => r.status === "pending") && (
                 <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-primary" />
               )}
             </TabBtn>
@@ -594,15 +624,17 @@ function Index() {
                     <Switch checked={parentMode} onCheckedChange={setParentMode} />
                   </div>
                   <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/80 italic">
-                    Demo only — this toggle is not a real parental control. In production,
-                    parent mode would be gated behind a PIN or an authenticated parent
-                    account with server-enforced roles.
+                    Demo only — this toggle is not a real parental control. In production, parent
+                    mode would be gated behind a PIN or an authenticated parent account with
+                    server-enforced roles.
                   </p>
                   {parentMode && kidsBucket && (
                     <div className="mt-4 flex items-center justify-between gap-3 pt-4 border-t border-border">
                       <div>
                         <p className="text-sm font-medium">{kidsBucket.name} limit</p>
-                        <p className="text-xs text-muted-foreground">Soft cap before asking permission.</p>
+                        <p className="text-xs text-muted-foreground">
+                          Soft cap before asking permission.
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-muted-foreground">$</span>
@@ -673,7 +705,11 @@ function Index() {
         onParentRequest={handleParentRequest}
         prefill={demoPrefill}
       />
-      <NewBucketModal open={newBucketOpen} onOpenChange={setNewBucketOpen} onCreate={handleCreateBucket} />
+      <NewBucketModal
+        open={newBucketOpen}
+        onOpenChange={setNewBucketOpen}
+        onCreate={handleCreateBucket}
+      />
       <TripPlanner
         open={tripOpen}
         onOpenChange={setTripOpen}
@@ -756,7 +792,15 @@ function Index() {
   );
 }
 
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function TabBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}

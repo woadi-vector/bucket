@@ -80,10 +80,7 @@ export function TripPlanner({
     const safePrice = isNaN(price) || price < 0 ? 0 : price;
     ensureTrip((t) => ({
       bucketId,
-      items: [
-        ...t.items,
-        { id: crypto.randomUUID(), name, price: safePrice, checked: false },
-      ],
+      items: [...t.items, { id: crypto.randomUUID(), name, price: safePrice, checked: false }],
     }));
     setItemName("");
     setItemPrice("");
@@ -194,8 +191,8 @@ export function TripPlanner({
               >
                 <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 <span>
-                  This trip puts you {formatCurrency(overBy)} over {bucket?.name}. Adjust
-                  before you go.
+                  This trip puts you {formatCurrency(overBy)} over {bucket?.name}. Adjust before you
+                  go.
                 </span>
               </motion.div>
             )}

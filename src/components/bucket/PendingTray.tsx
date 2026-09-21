@@ -12,7 +12,7 @@ type Props = {
 
 export function PendingTray({ items, buckets, onConfirm, onLetGo }: Props) {
   const handleLetGo = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
-    const li = (e.currentTarget.closest("li[data-pending-id]") as HTMLElement | null);
+    const li = e.currentTarget.closest("li[data-pending-id]") as HTMLElement | null;
     const rect = (li ?? e.currentTarget).getBoundingClientRect();
     onLetGo(id, rect);
   };
@@ -47,12 +47,17 @@ export function PendingTray({ items, buckets, onConfirm, onLetGo }: Props) {
                 <div className="min-w-0">
                   <div className="font-medium truncate">{p.label}</div>
                   <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--want)" }} />
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: "var(--want)" }}
+                    />
                     Want · {b?.name ?? "—"}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-lg font-semibold tabular-nums">{formatCurrency(p.amount)}</div>
+                  <div className="text-lg font-semibold tabular-nums">
+                    {formatCurrency(p.amount)}
+                  </div>
                   <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                     <Clock className="h-3 w-3" />
                     {p.hoursLeft}h left

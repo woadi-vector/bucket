@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -34,13 +40,27 @@ export function NewBucketModal({ open, onOpenChange, onCreate }: Props) {
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
             <Label htmlFor="bname">Name</Label>
-            <Input id="bname" placeholder="e.g. Coffee" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              id="bname"
+              placeholder="e.g. Coffee"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="bamt">Starting amount</Label>
-            <Input id="bamt" type="number" inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <Input
+              id="bamt"
+              type="number"
+              inputMode="decimal"
+              placeholder="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
           </div>
-          <Button onClick={submit} className="w-full h-11 rounded-xl">Create bucket</Button>
+          <Button onClick={submit} className="w-full h-11 rounded-xl">
+            Create bucket
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -10,8 +10,6 @@ hardcoded to start. Optimize for a beautiful, satisfying demo, not real
 
 infrastructure.
 
-
-
 THE CORE IDEA:
 
 Most budgeting apps track spending after it happens. Bucket moves the decision
@@ -22,13 +20,9 @@ to a spending "bucket" and tag it as a WANT or a NEED. That deliberate pause is
 
 the entire product. Make that moment feel great.
 
-
-
 THREE SCREENS:
 
-
-
-1) BUCKET DASHBOARD (home)
+1. BUCKET DASHBOARD (home)
 
 - Show 4 hardcoded buckets as cards: Groceries ($420), Dining Out ($85),
 
@@ -42,9 +36,7 @@ THREE SCREENS:
 
 - Let users create a new bucket (name + starting amount) via a simple modal.
 
-
-
-2) PURCHASE INTERCEPTION (the star — make this shine)
+2. PURCHASE INTERCEPTION (the star — make this shine)
 
 - Triggered by "New Purchase." User enters an amount and a merchant/label.
 
@@ -64,9 +56,7 @@ THREE SCREENS:
 
   not a nag, not a warning. A half-second of intentionality.
 
-
-
-3) PARENTAL VIEW (toggle in header)
+3. PARENTAL VIEW (toggle in header)
 
 - A switch flips the dashboard into "Parent" mode.
 
@@ -75,8 +65,6 @@ THREE SCREENS:
   bucket. If a purchase would exceed it, the interception flow shows a soft
 
   guardrail message instead of approving.
-
-
 
 DATA MODEL (keep it modular):
 
@@ -91,8 +79,6 @@ DATA MODEL (keep it modular):
   dummy value). Do NOT surface it anywhere in the UI — it's reserved for future
 
   use. Just keep it in the schema.
-
-
 
 AESTHETIC:
 
@@ -109,8 +95,6 @@ AESTHETIC:
   the interactions, not in heavy chrome.
 
 - Fully responsive; looks great on mobile.
-
-
 
 Prioritize one flawless happy-path loop: view buckets → New Purchase → want/need
 

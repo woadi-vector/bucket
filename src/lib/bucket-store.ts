@@ -50,10 +50,42 @@ export type ParentRequest = {
 };
 
 export const initialBuckets: Bucket[] = [
-  { id: "b1", name: "Groceries", balance: 420, limit: null, ownerType: "self", icon: ShoppingBasket, accent: "oklch(0.92 0.04 145)" },
-  { id: "b2", name: "Dining Out", balance: 85, limit: null, ownerType: "self", icon: UtensilsCrossed, accent: "oklch(0.93 0.045 65)" },
-  { id: "b3", name: "Kids' Allowance", balance: 50, limit: null, ownerType: "child", icon: Backpack, accent: "oklch(0.92 0.05 35)" },
-  { id: "b4", name: "Savings", balance: 1200, limit: null, ownerType: "self", icon: PiggyBank, accent: "oklch(0.91 0.05 195)" },
+  {
+    id: "b1",
+    name: "Groceries",
+    balance: 420,
+    limit: null,
+    ownerType: "self",
+    icon: ShoppingBasket,
+    accent: "oklch(0.92 0.04 145)",
+  },
+  {
+    id: "b2",
+    name: "Dining Out",
+    balance: 85,
+    limit: null,
+    ownerType: "self",
+    icon: UtensilsCrossed,
+    accent: "oklch(0.93 0.045 65)",
+  },
+  {
+    id: "b3",
+    name: "Kids' Allowance",
+    balance: 50,
+    limit: null,
+    ownerType: "child",
+    icon: Backpack,
+    accent: "oklch(0.92 0.05 35)",
+  },
+  {
+    id: "b4",
+    name: "Savings",
+    balance: 1200,
+    limit: null,
+    ownerType: "self",
+    icon: PiggyBank,
+    accent: "oklch(0.91 0.05 195)",
+  },
 ];
 
 export const SAVINGS_BUCKET_ID = "b4";

@@ -65,17 +65,13 @@ export function ReadinessInsights({ transactions, savedByPause }: Props) {
             </p>
           </div>
         ) : hasData ? (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Every paused want is money kept.
-          </p>
+          <p className="mt-3 text-xs text-muted-foreground">Every paused want is money kept.</p>
         ) : null}
       </div>
 
       {/* Readiness breakdown */}
       <div className="sm:col-span-2 rounded-2xl border border-border bg-card p-5">
-        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-          Wanting shape
-        </p>
+        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Wanting shape</p>
         <div className="mt-4 space-y-3">
           {READINESS_OPTIONS.map((opt) => {
             const value = tagTotals[opt.id];

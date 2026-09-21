@@ -47,10 +47,19 @@ export function ParentInbox({ requests, buckets, onApprove, onDeny }: Props) {
                     </div>
                   </div>
                   <div className="flex gap-1.5">
-                    <Button size="icon" variant="outline" className="h-9 w-9 rounded-lg" onClick={() => onDeny(r.id)}>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-9 w-9 rounded-lg"
+                      onClick={() => onDeny(r.id)}
+                    >
                       <X className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" className="h-9 w-9 rounded-lg" onClick={() => onApprove(r.id)}>
+                    <Button
+                      size="icon"
+                      className="h-9 w-9 rounded-lg"
+                      onClick={() => onApprove(r.id)}
+                    >
                       <Check className="h-4 w-4" />
                     </Button>
                   </div>

@@ -35,8 +35,7 @@ export async function parseReceipt(_file: File): Promise<ParsedReceipt> {
     };
   }
 
-  const merchant =
-    SAMPLE_MERCHANTS[Math.floor(Math.random() * SAMPLE_MERCHANTS.length)];
+  const merchant = SAMPLE_MERCHANTS[Math.floor(Math.random() * SAMPLE_MERCHANTS.length)];
   // Realistic-looking totals
   const total = Math.round((4 + Math.random() * 95) * 100) / 100;
 

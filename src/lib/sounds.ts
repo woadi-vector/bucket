@@ -46,9 +46,7 @@ function synth(tones: Tone[], gap = 0): string {
     const g = t.gain ?? 0.25;
     for (let i = 0; i < len; i++) {
       const tt = i / sr;
-      const env =
-        Math.min(1, tt / 0.012) *
-        Math.min(1, (t.dur - tt) / 0.08);
+      const env = Math.min(1, tt / 0.012) * Math.min(1, (t.dur - tt) / 0.08);
       let v;
       const phase = 2 * Math.PI * t.freq * tt;
       if (t.type === "triangle") {
@@ -67,15 +65,21 @@ function synth(tones: Tone[], gap = 0): string {
 export const SOUND_NEED = synth([{ freq: 196, dur: 0.32, type: "triangle", gain: 0.28 }]);
 
 // Want: slightly higher, two-note "question" (rising)
-export const SOUND_WANT = synth([
-  { freq: 392, dur: 0.16, type: "sine", gain: 0.22 },
-  { freq: 523, dur: 0.22, type: "sine", gain: 0.2 },
-], 0.02);
+export const SOUND_WANT = synth(
+  [
+    { freq: 392, dur: 0.16, type: "sine", gain: 0.22 },
+    { freq: 523, dur: 0.22, type: "sine", gain: 0.2 },
+  ],
+  0.02,
+);
 
 // Let-it-go: gentle ascending arpeggio flourish
-export const SOUND_LETGO = synth([
-  { freq: 523, dur: 0.13, type: "sine", gain: 0.22 },
-  { freq: 659, dur: 0.13, type: "sine", gain: 0.22 },
-  { freq: 784, dur: 0.18, type: "sine", gain: 0.22 },
-  { freq: 1047, dur: 0.28, type: "sine", gain: 0.2 },
-], 0.01);
+export const SOUND_LETGO = synth(
+  [
+    { freq: 523, dur: 0.13, type: "sine", gain: 0.22 },
+    { freq: 659, dur: 0.13, type: "sine", gain: 0.22 },
+    { freq: 784, dur: 0.18, type: "sine", gain: 0.22 },
+    { freq: 1047, dur: 0.28, type: "sine", gain: 0.2 },
+  ],
+  0.01,
+);
