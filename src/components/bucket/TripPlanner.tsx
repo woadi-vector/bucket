@@ -2,22 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Bucket, formatCurrency } from "@/lib/bucket-store";
+import { Bucket, Trip, formatCurrency } from "@/lib/bucket-store";
 import { Check, Plus, ShoppingCart, Trash2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
-
-export type TripItem = {
-  id: string;
-  name: string;
-  price: number; // 0 if unestimated
-  checked: boolean;
-};
-
-export type Trip = {
-  bucketId: string;
-  items: TripItem[];
-};
 
 type Props = {
   open: boolean;

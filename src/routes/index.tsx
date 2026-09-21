@@ -1,17 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Bucket,
-  PendingWant,
-  ParentRequest,
-  Transaction,
-  ReadinessTag,
-  initialBuckets,
-  formatCurrency,
-  SAVINGS_BUCKET_ID,
-  DEFAULT_BUCKET_ICON,
-  DEFAULT_BUCKET_ACCENT,
-} from "@/lib/bucket-store";
+import { useMemo, useRef } from "react";
+import { formatCurrency } from "@/lib/bucket-store";
 import { BucketCard } from "@/components/bucket/BucketCard";
 import { PurchaseFlow } from "@/components/bucket/PurchaseFlow";
 import { NewBucketModal } from "@/components/bucket/NewBucketModal";
@@ -33,12 +22,13 @@ import {
   ScanLine,
   Loader2,
 } from "lucide-react";
-import { useBucketSounds } from "@/lib/use-bucket-sounds";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
-import { TripPlanner, Trip } from "@/components/bucket/TripPlanner";
+import { TripPlanner } from "@/components/bucket/TripPlanner";
 import { parseReceipt } from "@/lib/receipt-ocr";
 import { DemoOverlay } from "@/components/bucket/DemoOverlay";
+import { BucketProvider, useBucketActions, useBucketState } from "@/lib/bucket/provider";
+import { useDemo } from "@/lib/bucket/use-demo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -51,34 +41,47 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
-  component: Index,
+  component: IndexRoute,
 });
 
-function Index() {
-  const [buckets, setBuckets] = useState<Bucket[]>(initialBuckets);
-  const [startingBalances, setStartingBalances] = useState<Record<string, number>>(() =>
-    Object.fromEntries(initialBuckets.map((b) => [b.id, b.balance])),
+function IndexRoute() {
+  return (
+    <BucketProvider>
+      <Index />
+    </BucketProvider>
   );
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [pending, setPending] = useState<PendingWant[]>([]);
-  const [parentRequests, setParentRequests] = useState<ParentRequest[]>([]);
-  const [savedByPause, setSavedByPause] = useState(0);
-  const [purchaseOpen, setPurchaseOpen] = useState(false);
-  const [newBucketOpen, setNewBucketOpen] = useState(false);
-  const [tripOpen, setTripOpen] = useState(false);
-  const [trip, setTrip] = useState<Trip | null>(null);
-  const [scanning, setScanning] = useState(false);
+}
+
+function Index() {
+  const {
+    buckets,
+    startingBalances,
+    transactions,
+    pending,
+    parentRequests,
+    savedByPause,
+    trip,
+    ui,
+  } = useBucketState();
+  const actions = useBucketActions();
+  const demo = useDemo();
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const total = useMemo(() => buckets.reduce((s, b) => s + b.balance, 0), [buckets]);
+  const kidsBucket = buckets.find((b) => b.ownerType === "child");
+  const recent = transactions.slice(0, 5);
+
   const handleReceiptFile = async (file: File) => {
-    setScanning(true);
+    actions.setScanning(true);
     try {
       const parsed = await parseReceipt(file);
       const lowConfidence = parsed.confidence < 0.5 || parsed.total <= 0;
-      setDemoPrefill({
+      actions.setPrefill({
         amount: parsed.total > 0 ? parsed.total : 0,
         label: parsed.merchant || "",
       });
-      setPurchaseOpen(true);
+      actions.setPurchaseOpen(true);
       if (lowConfidence) {
         toast("Couldn't read clearly", {
           description: "Fill in what's right — your call.",
@@ -92,346 +95,17 @@ function Index() {
       }
     } catch {
       // Hard failure → still drop into manual entry, don't dead-end.
-      setDemoPrefill({ amount: 0, label: "" });
-      setPurchaseOpen(true);
+      actions.setPrefill({ amount: 0, label: "" });
+      actions.setPurchaseOpen(true);
       toast("Scan failed", {
         description: "Enter the purchase manually.",
         duration: 4000,
       });
     } finally {
-      setScanning(false);
+      actions.setScanning(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
-  const [parentMode, setParentMode] = useState(false);
-  const [muted, setMuted] = useState(true);
-  const [justUpdatedId, setJustUpdatedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"buckets" | "pending" | "family">("buckets");
-  const [demoPrefill, setDemoPrefill] = useState<{
-    amount: number;
-    label: string;
-    intent?: "want" | "need";
-    bucketId?: string;
-  } | null>(null);
-  const [demoActive, setDemoActive] = useState(false);
-  const [demoStep, setDemoStep] = useState(0);
-  const [demoPaused, setDemoPaused] = useState(false);
-  const [demoSpeed, setDemoSpeed] = useState(1);
-  const [flying, setFlying] = useState<{
-    key: number;
-    amount: number;
-    from: { x: number; y: number };
-    to: { x: number; y: number };
-  } | null>(null);
-
-  const { playNeed, playWant, playLetGo } = useBucketSounds(muted);
-
-  const total = useMemo(() => buckets.reduce((s, b) => s + b.balance, 0), [buckets]);
-
-  const handleConfirm = (data: {
-    amount: number;
-    label: string;
-    bucketId: string;
-    intent: "want" | "need";
-    readinessTag?: ReadinessTag | null;
-  }) => {
-    setBuckets((prev) =>
-      prev.map((b) => (b.id === data.bucketId ? { ...b, balance: b.balance - data.amount } : b)),
-    );
-    setTransactions((prev) => [
-      {
-        id: crypto.randomUUID(),
-        amount: data.amount,
-        label: data.label,
-        bucketId: data.bucketId,
-        intent: data.intent,
-        timestamp: Date.now(),
-        readinessTag: data.readinessTag ?? null,
-      },
-      ...prev,
-    ]);
-    setJustUpdatedId(data.bucketId);
-    setTimeout(() => setJustUpdatedId(null), 1000);
-    if (data.intent === "need") playNeed();
-    else playWant();
-  };
-
-  const handleSleepOnIt = (data: {
-    amount: number;
-    label: string;
-    bucketId: string;
-    readinessTag?: ReadinessTag | null;
-  }) => {
-    setPending((prev) => [
-      {
-        id: crypto.randomUUID(),
-        amount: data.amount,
-        label: data.label,
-        bucketId: data.bucketId,
-        createdAt: Date.now(),
-        hoursLeft: 23,
-      },
-      ...prev,
-    ]);
-    setTab("pending");
-  };
-
-  const confirmPending = (id: string) => {
-    const p = pending.find((x) => x.id === id);
-    if (!p) return;
-    setPending((prev) => prev.filter((x) => x.id !== id));
-    handleConfirm({ amount: p.amount, label: p.label, bucketId: p.bucketId, intent: "want" });
-  };
-
-  const letItGo = (id: string, sourceRect?: DOMRect) => {
-    const p = pending.find((x) => x.id === id);
-    if (!p) return;
-
-    // Resolve source/target points for the flying coin
-    const savingsEl = document.querySelector<HTMLElement>(
-      `[data-bucket-id="${SAVINGS_BUCKET_ID}"]`,
-    );
-    const fallback = {
-      x: window.innerWidth / 2,
-      y: window.innerHeight / 2,
-    };
-    const from = sourceRect
-      ? { x: sourceRect.left + sourceRect.width / 2, y: sourceRect.top + sourceRect.height / 2 }
-      : fallback;
-    const target = savingsEl?.getBoundingClientRect();
-    const to = target
-      ? { x: target.left + target.width / 2, y: target.top + target.height / 2 }
-      : fallback;
-
-    // Remove pending item immediately (it should leave the list)
-    setPending((prev) => prev.filter((x) => x.id !== id));
-
-    // Fire coin
-    setFlying({ key: Date.now(), amount: p.amount, from, to });
-
-    // After the coin lands (~700ms): bump savings + saved counter + pulse + sound
-    window.setTimeout(() => {
-      setTab("buckets");
-    }, 100);
-    window.setTimeout(() => {
-      setBuckets((prev) =>
-        prev.map((b) => (b.id === SAVINGS_BUCKET_ID ? { ...b, balance: b.balance + p.amount } : b)),
-      );
-      setStartingBalances((prev) => ({
-        ...prev,
-        [SAVINGS_BUCKET_ID]: (prev[SAVINGS_BUCKET_ID] ?? 0) + p.amount,
-      }));
-      setJustUpdatedId(SAVINGS_BUCKET_ID);
-      setSavedByPause((s) => s + p.amount);
-      playLetGo();
-      setFlying(null);
-      window.setTimeout(() => setJustUpdatedId(null), 1000);
-    }, 720);
-
-    // Undo toast
-    toast("Let it go", {
-      description: `${formatCurrency(p.amount)} → Savings`,
-      duration: 5000,
-      action: {
-        label: "Undo",
-        onClick: () => {
-          // Reverse: take it back out of savings, restore pending item, decrement saved
-          setBuckets((prev) =>
-            prev.map((b) =>
-              b.id === SAVINGS_BUCKET_ID ? { ...b, balance: b.balance - p.amount } : b,
-            ),
-          );
-          setStartingBalances((prev) => ({
-            ...prev,
-            [SAVINGS_BUCKET_ID]: Math.max(0, (prev[SAVINGS_BUCKET_ID] ?? 0) - p.amount),
-          }));
-          setSavedByPause((s) => Math.max(0, s - p.amount));
-          setPending((prev) => [p, ...prev]);
-          setTab("pending");
-        },
-      },
-    });
-  };
-
-  const handleParentRequest = (data: { amount: number; label: string; bucketId: string }) => {
-    setParentRequests((prev) => [
-      {
-        id: crypto.randomUUID(),
-        amount: data.amount,
-        label: data.label,
-        bucketId: data.bucketId,
-        status: "pending",
-        createdAt: Date.now(),
-      },
-      ...prev,
-    ]);
-  };
-
-  const approveRequest = (id: string) => {
-    const r = parentRequests.find((x) => x.id === id);
-    if (!r) return;
-    setParentRequests((prev) => prev.map((x) => (x.id === id ? { ...x, status: "approved" } : x)));
-    handleConfirm({ amount: r.amount, label: r.label, bucketId: r.bucketId, intent: "want" });
-  };
-
-  const denyRequest = (id: string) => {
-    setParentRequests((prev) => prev.map((x) => (x.id === id ? { ...x, status: "denied" } : x)));
-  };
-
-  const handleCreateBucket = (name: string, amount: number) => {
-    const id = crypto.randomUUID();
-    setBuckets((prev) => [
-      ...prev,
-      {
-        id,
-        name,
-        balance: amount,
-        limit: null,
-        ownerType: "self",
-        icon: DEFAULT_BUCKET_ICON,
-        accent: DEFAULT_BUCKET_ACCENT,
-      },
-    ]);
-    setStartingBalances((prev) => ({ ...prev, [id]: amount }));
-  };
-
-  const kidsBucket = buckets.find((b) => b.ownerType === "child");
-
-  const setKidsLimit = (val: string) => {
-    const n = parseFloat(val);
-    setBuckets((prev) =>
-      prev.map((b) =>
-        b.ownerType === "child" ? { ...b, limit: isNaN(n) || n <= 0 ? null : n } : b,
-      ),
-    );
-  };
-
-  const recent = transactions.slice(0, 5);
-
-  // -------- Scripted demo --------
-  const resetDemoState = useCallback(() => {
-    setBuckets(initialBuckets);
-    setStartingBalances(Object.fromEntries(initialBuckets.map((b) => [b.id, b.balance])));
-    setTransactions([]);
-    setPending([]);
-    setParentRequests([]);
-    setSavedByPause(0);
-    setTrip(null);
-    setTripOpen(false);
-    setNewBucketOpen(false);
-    setPurchaseOpen(false);
-    setDemoPrefill(null);
-    setTab("buckets");
-  }, []);
-
-  type DemoStep = { caption: string; target?: string | null; delay: number; action?: () => void };
-  const demoSteps = useMemo<DemoStep[]>(
-    () => [
-      {
-        caption: "Three buckets to live from — Groceries, Dining, Savings.",
-        target: `[data-bucket-id="b1"]`,
-        delay: 2600,
-        action: () => setTab("buckets"),
-      },
-      {
-        caption: "Time to spend. Tap New purchase to start.",
-        target: `[data-demo="new-purchase"]`,
-        delay: 1900,
-      },
-      {
-        caption: "$68 headphones — tagged a want, not a need.",
-        target: null,
-        delay: 2400,
-        action: () => {
-          setDemoPrefill({ amount: 68, label: "New headphones", intent: "want", bucketId: "b2" });
-          setPurchaseOpen(true);
-        },
-      },
-      {
-        caption: "Sleep on it. Wants get a 23-hour pause.",
-        target: null,
-        delay: 1800,
-        action: () => {
-          setPurchaseOpen(false);
-          setDemoPrefill(null);
-          handleSleepOnIt({ amount: 68, label: "New headphones", bucketId: "b2" });
-        },
-      },
-      {
-        caption: "Pending tray — your future self decides.",
-        target: `li[data-pending-id]`,
-        delay: 2400,
-        action: () => setTab("pending"),
-      },
-      {
-        caption: "Let it go — money flies straight into Savings.",
-        target: `[data-bucket-id="b4"]`,
-        delay: 2800,
-        action: () => {
-          const li = document.querySelector<HTMLElement>("li[data-pending-id]");
-          const id = li?.dataset.pendingId;
-          if (id) letItGo(id, li?.getBoundingClientRect());
-        },
-      },
-      {
-        caption: "Saved by pause — every skipped want adds up.",
-        target: `[data-demo="saved"]`,
-        delay: 2600,
-      },
-      {
-        caption: "Insights reveal the shape of your wanting.",
-        target: `[data-demo="insights"]`,
-        delay: 2800,
-      },
-      {
-        caption: "Done. Replay anytime, at any speed.",
-        target: null,
-        delay: 1800,
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
-
-  const lastRunStepRef = useRef(0);
-  useEffect(() => {
-    if (!demoActive || demoPaused) return;
-    if (demoStep < 1) return;
-    if (demoStep > demoSteps.length) {
-      setDemoActive(false);
-      setDemoStep(0);
-      lastRunStepRef.current = 0;
-      return;
-    }
-    const step = demoSteps[demoStep - 1];
-    if (lastRunStepRef.current !== demoStep) {
-      lastRunStepRef.current = demoStep;
-      step.action?.();
-    }
-    const ms = Math.max(400, step.delay / demoSpeed);
-    const t = window.setTimeout(() => setDemoStep((s) => s + 1), ms);
-    return () => window.clearTimeout(t);
-  }, [demoActive, demoPaused, demoStep, demoSpeed, demoSteps]);
-
-  const playDemo = useCallback(() => {
-    if (demoActive) return;
-    resetDemoState();
-    lastRunStepRef.current = 0;
-    setDemoSpeed(1);
-    setDemoPaused(false);
-    setDemoStep(1);
-    setDemoActive(true);
-  }, [demoActive, resetDemoState]);
-
-  const exitDemo = useCallback(() => {
-    setDemoActive(false);
-    setDemoPaused(false);
-    setDemoStep(0);
-    lastRunStepRef.current = 0;
-  }, []);
-
-  const currentStep =
-    demoActive && demoStep > 0 ? demoSteps[Math.min(demoStep, demoSteps.length) - 1] : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -448,21 +122,21 @@ function Index() {
             <Button
               variant="outline"
               size="sm"
-              onClick={playDemo}
-              disabled={demoActive}
+              onClick={demo.play}
+              disabled={demo.active}
               className="h-9 rounded-lg gap-1.5"
             >
               <PlayCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">{demoActive ? "Playing…" : "Play demo"}</span>
+              <span className="hidden sm:inline">{demo.active ? "Playing…" : "Play demo"}</span>
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setMuted((m) => !m)}
+              onClick={actions.toggleMuted}
               className="h-9 w-9 rounded-lg"
-              aria-label={muted ? "Unmute" : "Mute"}
+              aria-label={ui.muted ? "Unmute" : "Mute"}
             >
-              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              {ui.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </Button>
           </div>
         </header>
@@ -479,7 +153,7 @@ function Index() {
 
           <div className="mt-6 flex flex-wrap gap-2">
             <Button
-              onClick={() => setPurchaseOpen(true)}
+              onClick={() => actions.setPurchaseOpen(true)}
               data-demo="new-purchase"
               className="h-12 rounded-xl px-5 text-base shadow-[0_2px_8px_oklch(0.52_0.11_165/0.25)]"
             >
@@ -488,14 +162,14 @@ function Index() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => setNewBucketOpen(true)}
+              onClick={() => actions.setNewBucketOpen(true)}
               className="h-12 rounded-xl px-4"
             >
               New bucket
             </Button>
             <Button
               variant="outline"
-              onClick={() => setTripOpen(true)}
+              onClick={() => actions.setTripOpen(true)}
               className="h-12 rounded-xl px-4 gap-1.5"
             >
               <ShoppingCart className="h-4 w-4" />
@@ -504,15 +178,15 @@ function Index() {
             <Button
               variant="outline"
               onClick={() => fileInputRef.current?.click()}
-              disabled={scanning}
+              disabled={ui.scanning}
               className="h-12 rounded-xl px-4 gap-1.5"
             >
-              {scanning ? (
+              {ui.scanning ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <ScanLine className="h-4 w-4" />
               )}
-              {scanning ? "Reading…" : "Scan receipt"}
+              {ui.scanning ? "Reading…" : "Scan receipt"}
             </Button>
             <input
               ref={fileInputRef}
@@ -531,7 +205,7 @@ function Index() {
         {trip && trip.items.length > 0 && (
           <button
             type="button"
-            onClick={() => setTripOpen(true)}
+            onClick={() => actions.setTripOpen(true)}
             className="mt-4 w-full rounded-2xl border border-primary/30 bg-accent/40 px-4 py-3 text-left transition-colors hover:bg-accent/60"
           >
             <div className="flex items-center justify-between gap-3">
@@ -562,13 +236,13 @@ function Index() {
           <ReadinessInsights transactions={transactions} savedByPause={savedByPause} />
         </div>
 
-        {/* Tabs: Buckets / Pending */}
+        {/* Tabs: Buckets / Pending / Family */}
         <section className="mt-10">
           <div className="inline-flex items-center gap-1 rounded-xl bg-secondary p-1">
-            <TabBtn active={tab === "buckets"} onClick={() => setTab("buckets")}>
+            <TabBtn active={ui.tab === "buckets"} onClick={() => actions.setTab("buckets")}>
               Buckets
             </TabBtn>
-            <TabBtn active={tab === "pending"} onClick={() => setTab("pending")}>
+            <TabBtn active={ui.tab === "pending"} onClick={() => actions.setTab("pending")}>
               Pending
               {pending.length > 0 && (
                 <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
@@ -576,7 +250,7 @@ function Index() {
                 </span>
               )}
             </TabBtn>
-            <TabBtn active={tab === "family"} onClick={() => setTab("family")}>
+            <TabBtn active={ui.tab === "family"} onClick={() => actions.setTab("family")}>
               Family
               {parentRequests.some((r) => r.status === "pending") && (
                 <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-primary" />
@@ -585,33 +259,33 @@ function Index() {
           </div>
 
           <motion.div
-            key={tab}
+            key={ui.tab}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
             className="mt-4"
           >
-            {tab === "buckets" && (
+            {ui.tab === "buckets" && (
               <div className="grid gap-3 sm:grid-cols-2">
                 {buckets.map((b) => (
                   <BucketCard
                     key={b.id}
                     bucket={b}
                     startingBalance={startingBalances[b.id] ?? b.balance}
-                    justUpdated={justUpdatedId === b.id}
+                    justUpdated={ui.justUpdatedId === b.id}
                   />
                 ))}
               </div>
             )}
-            {tab === "pending" && (
+            {ui.tab === "pending" && (
               <PendingTray
                 items={pending}
                 buckets={buckets}
-                onConfirm={confirmPending}
-                onLetGo={letItGo}
+                onConfirm={actions.confirmPending}
+                onLetGo={actions.letItGo}
               />
             )}
-            {tab === "family" && (
+            {ui.tab === "family" && (
               <div className="space-y-4">
                 <div className="rounded-2xl border border-border bg-card p-5">
                   <div className="flex items-start justify-between gap-4">
@@ -621,14 +295,14 @@ function Index() {
                         Set limits and review purchase requests from kids' buckets.
                       </p>
                     </div>
-                    <Switch checked={parentMode} onCheckedChange={setParentMode} />
+                    <Switch checked={ui.parentMode} onCheckedChange={actions.setParentMode} />
                   </div>
                   <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground/80 italic">
                     Demo only — this toggle is not a real parental control. In production, parent
                     mode would be gated behind a PIN or an authenticated parent account with
                     server-enforced roles.
                   </p>
-                  {parentMode && kidsBucket && (
+                  {ui.parentMode && kidsBucket && (
                     <div className="mt-4 flex items-center justify-between gap-3 pt-4 border-t border-border">
                       <div>
                         <p className="text-sm font-medium">{kidsBucket.name} limit</p>
@@ -644,18 +318,18 @@ function Index() {
                           className="h-10 w-28 rounded-lg"
                           placeholder="No limit"
                           value={kidsBucket.limit ?? ""}
-                          onChange={(e) => setKidsLimit(e.target.value)}
+                          onChange={(e) => actions.setChildLimit(e.target.value)}
                         />
                       </div>
                     </div>
                   )}
                 </div>
-                {parentMode && (
+                {ui.parentMode && (
                   <ParentInbox
                     requests={parentRequests}
                     buckets={buckets}
-                    onApprove={approveRequest}
-                    onDeny={denyRequest}
+                    onApprove={actions.approveRequest}
+                    onDeny={actions.denyRequest}
                   />
                 )}
               </div>
@@ -696,67 +370,45 @@ function Index() {
       </div>
 
       <PurchaseFlow
-        open={purchaseOpen}
-        onOpenChange={setPurchaseOpen}
+        open={ui.purchaseOpen}
+        onOpenChange={actions.setPurchaseOpen}
         buckets={buckets}
         startingBalances={startingBalances}
-        onConfirm={handleConfirm}
-        onSleepOnIt={handleSleepOnIt}
-        onParentRequest={handleParentRequest}
-        prefill={demoPrefill}
+        onConfirm={actions.confirmPurchase}
+        onSleepOnIt={actions.sleepOnIt}
+        onParentRequest={actions.createParentRequest}
+        prefill={ui.prefill}
       />
       <NewBucketModal
-        open={newBucketOpen}
-        onOpenChange={setNewBucketOpen}
-        onCreate={handleCreateBucket}
+        open={ui.newBucketOpen}
+        onOpenChange={actions.setNewBucketOpen}
+        onCreate={actions.createBucket}
       />
       <TripPlanner
-        open={tripOpen}
-        onOpenChange={setTripOpen}
+        open={ui.tripOpen}
+        onOpenChange={actions.setTripOpen}
         buckets={buckets}
         trip={trip}
         startingBalances={startingBalances}
-        onTripChange={setTrip}
-        onComplete={(checkedTotal) => {
-          if (!trip) return;
-          const checked = trip.items.filter((i) => i.checked && i.price > 0);
-          if (checked.length === 0) return;
-          const bucket = buckets.find((b) => b.id === trip.bucketId);
-          const label =
-            checked.length === 1
-              ? checked[0].name
-              : `${bucket?.name ?? "Trip"} · ${checked.length} items`;
-          handleConfirm({
-            amount: checkedTotal,
-            label,
-            bucketId: trip.bucketId,
-            intent: "need",
-            readinessTag: null,
-          });
-          setTrip(null);
-          setTripOpen(false);
-          toast("Trip complete", {
-            description: `${formatCurrency(checkedTotal)} from ${bucket?.name ?? "bucket"}`,
-            duration: 4000,
-          });
-        }}
-        onDiscard={() => setTrip(null)}
+        onTripChange={actions.setTrip}
+        onComplete={actions.completeTrip}
+        onDiscard={() => actions.setTrip(null)}
       />
 
       {/* Flying coin layer — money moving from pending into Savings */}
       <AnimatePresence>
-        {flying && (
+        {ui.flying && (
           <motion.div
-            key={flying.key}
+            key={ui.flying.key}
             initial={{
-              left: flying.from.x,
-              top: flying.from.y,
+              left: ui.flying.from.x,
+              top: ui.flying.from.y,
               scale: 1,
               opacity: 0,
             }}
             animate={{
-              left: flying.to.x,
-              top: flying.to.y,
+              left: ui.flying.to.x,
+              top: ui.flying.to.y,
               scale: 0.55,
               opacity: [0, 1, 1, 0.9],
             }}
@@ -770,23 +422,23 @@ function Index() {
             className="-translate-x-1/2 -translate-y-1/2"
           >
             <div className="rounded-full bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold tabular-nums shadow-[0_8px_24px_oklch(0.52_0.11_165/0.45)]">
-              +{formatCurrency(flying.amount)}
+              +{formatCurrency(ui.flying.amount)}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <DemoOverlay
-        active={demoActive}
-        step={Math.min(demoStep, demoSteps.length)}
-        total={demoSteps.length}
-        caption={currentStep?.caption ?? ""}
-        targetSelector={currentStep?.target ?? null}
-        paused={demoPaused}
-        speed={demoSpeed}
-        onSpeedChange={setDemoSpeed}
-        onPauseToggle={() => setDemoPaused((p) => !p)}
-        onExit={exitDemo}
+        active={demo.active}
+        step={demo.step}
+        total={demo.total}
+        caption={demo.caption}
+        targetSelector={demo.target}
+        paused={demo.paused}
+        speed={demo.speed}
+        onSpeedChange={demo.setSpeed}
+        onPauseToggle={demo.togglePaused}
+        onExit={demo.exit}
       />
     </div>
   );

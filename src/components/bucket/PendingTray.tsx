@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Bucket, PendingWant, formatCurrency } from "@/lib/bucket-store";
+import { Bucket, PendingWant, SLEEP_THRESHOLD, formatCurrency } from "@/lib/bucket-store";
 import { Button } from "@/components/ui/button";
 import { Clock, Sparkles } from "lucide-react";
 
@@ -21,7 +21,8 @@ export function PendingTray({ items, buckets, onConfirm, onLetGo }: Props) {
       <div className="rounded-2xl border border-dashed border-border bg-card/40 p-8 text-center">
         <Clock className="mx-auto h-5 w-5 text-muted-foreground" />
         <p className="mt-2 text-sm text-muted-foreground">
-          Nothing pending. Wants over $40 will land here for a 24h pause.
+          Nothing pending. Wants over {formatCurrency(SLEEP_THRESHOLD)} will land here for a 24h
+          pause.
         </p>
       </div>
     );
@@ -49,9 +50,9 @@ export function PendingTray({ items, buckets, onConfirm, onLetGo }: Props) {
                   <div className="mt-0.5 text-xs text-muted-foreground flex items-center gap-1.5">
                     <span
                       className="h-1.5 w-1.5 rounded-full"
-                      style={{ backgroundColor: "var(--want)" }}
+                      style={{ backgroundColor: `var(--${p.intent})` }}
                     />
-                    Want · {b?.name ?? "—"}
+                    <span className="capitalize">{p.intent}</span> · {b?.name ?? "—"}
                   </div>
                 </div>
                 <div className="text-right shrink-0">

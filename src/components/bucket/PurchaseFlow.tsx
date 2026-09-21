@@ -3,14 +3,19 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Bucket, formatCurrency, ReadinessTag, READINESS_OPTIONS } from "@/lib/bucket-store";
+import {
+  Bucket,
+  formatCurrency,
+  ReadinessTag,
+  READINESS_OPTIONS,
+  SLEEP_THRESHOLD,
+  resolveBucketIcon,
+} from "@/lib/bucket-store";
 import { cn } from "@/lib/utils";
 import { Check, Moon, Zap, Send } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type Step = "amount" | "intent" | "readiness" | "bucket" | "intercept" | "askParent" | "confirm";
-
-export const SLEEP_THRESHOLD = 40;
 
 type Props = {
   open: boolean;
@@ -28,6 +33,7 @@ type Props = {
     amount: number;
     label: string;
     bucketId: string;
+    intent: "want" | "need";
     readinessTag: ReadinessTag | null;
   }) => void;
   onParentRequest: (data: { amount: number; label: string; bucketId: string }) => void;
@@ -107,7 +113,13 @@ export function PurchaseFlow({
 
   const sleepOnIt = () => {
     if (!bucketId) return;
-    onSleepOnIt({ amount: amt, label: label.trim(), bucketId, readinessTag: readiness });
+    onSleepOnIt({
+      amount: amt,
+      label: label.trim(),
+      bucketId,
+      intent: intent ?? "want",
+      readinessTag: readiness,
+    });
     onOpenChange(false);
   };
 
@@ -285,6 +297,7 @@ export function PurchaseFlow({
                   {buckets.map((b) => {
                     const after = b.balance - amt;
                     const negative = after < 0;
+                    const Icon = resolveBucketIcon(b.iconKey);
                     return (
                       <button
                         key={b.id}
@@ -296,7 +309,7 @@ export function PurchaseFlow({
                             className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center"
                             style={{ backgroundColor: b.accent }}
                           >
-                            <b.icon className="h-4 w-4 text-foreground/80" />
+                            <Icon className="h-4 w-4 text-foreground/80" />
                           </div>
                           <div className="min-w-0">
                             <div className="font-medium truncate">{b.name}</div>

@@ -1,4 +1,4 @@
-import { Bucket, formatCurrency } from "@/lib/bucket-store";
+import { Bucket, formatCurrency, resolveBucketIcon } from "@/lib/bucket-store";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -22,6 +22,7 @@ export function BucketCard({
   const pct = startingBalance > 0 ? Math.min(100, (spent / startingBalance) * 100) : 0;
   const isChild = bucket.ownerType === "child";
   const overLimit = bucket.limit != null && spent > bucket.limit;
+  const Icon = resolveBucketIcon(bucket.iconKey);
 
   return (
     <button
@@ -44,7 +45,7 @@ export function BucketCard({
           className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center"
           style={{ backgroundColor: bucket.accent }}
         >
-          <bucket.icon className="h-5 w-5 text-foreground/80" strokeWidth={2} />
+          <Icon className="h-5 w-5 text-foreground/80" strokeWidth={2} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
