@@ -54,6 +54,8 @@ type UiState = {
   justUpdatedId: string | null;
   prefill: Prefill;
   flying: FlyingCoin;
+  /** Transaction whose contested verdict is being shown. Null when there is no argument. */
+  retractionFor: string | null;
 };
 
 type PurchaseInput = {
@@ -94,6 +96,12 @@ export type BucketActions = {
   setTrip: (trip: Trip | null) => void;
   completeTrip: (checkedTotal: number) => void;
   resetAll: () => void;
+  /** Accept Bucket's second thought: the money goes back and the item waits in the tray. */
+  retractToTray: (transactionId: string) => void;
+  /** Keep your own call. Both the verdict and this decision are recorded. */
+  overrideVerdict: (transactionId: string) => void;
+  /** Close the argument without answering it. It stays on the transaction. */
+  dismissRetraction: () => void;
   setTab: (tab: Tab) => void;
   setPurchaseOpen: (open: boolean) => void;
   setNewBucketOpen: (open: boolean) => void;
@@ -118,6 +126,7 @@ const INITIAL_UI: UiState = {
   justUpdatedId: null,
   prefill: null,
   flying: null,
+  retractionFor: null,
 };
 
 export function BucketProvider({
@@ -170,44 +179,52 @@ export function BucketProvider({
    * beat the product exists to create. The verdict lands when it lands; if the item is gone
    * by then the reducer ignores it.
    */
-  const requestVerdictFor = useEvent((subjectId: string, subject: VerdictSubject) => {
-    const bucketName = (id: string) => state.buckets.find((b) => b.id === id)?.name;
+  const requestVerdictFor = useEvent(
+    (subjectId: string, subject: VerdictSubject, kind: "transaction" | "pending") => {
+      const bucketName = (id: string) => state.buckets.find((b) => b.id === id)?.name;
 
-    const history = state.transactions.slice(0, 20).map((t) => ({
-      amount: t.amount,
-      label: t.label,
-      intent: t.intent,
-      readinessTag: t.readinessTag,
-      timestamp: t.timestamp,
-      bucketName: bucketName(t.bucketId),
-    }));
+      const history = state.transactions.slice(0, 20).map((t) => ({
+        amount: t.amount,
+        label: t.label,
+        intent: t.intent,
+        readinessTag: t.readinessTag,
+        timestamp: t.timestamp,
+        bucketName: bucketName(t.bucketId),
+      }));
 
-    const purchase = {
-      amount: subject.amount,
-      label: subject.label,
-      intent: subject.intent,
-      readinessTag: subject.readinessTag,
-      bucketName: bucketName(subject.bucketId),
-    };
+      const purchase = {
+        amount: subject.amount,
+        label: subject.label,
+        intent: subject.intent,
+        readinessTag: subject.readinessTag,
+        bucketName: bucketName(subject.bucketId),
+      };
 
-    void requestVerdict({ data: { purchase, history } })
-      .then((verdict) => {
-        dispatch({
-          type: "ATTACH_VERDICT",
-          subjectId,
-          verdict: {
-            agrees: verdict.agrees,
-            verdict: verdict.verdict,
-            confidence: verdict.confidence,
-            reasoning: verdict.reasoning,
-          },
+      void requestVerdict({ data: { purchase, history } })
+        .then((verdict) => {
+          dispatch({
+            type: "ATTACH_VERDICT",
+            subjectId,
+            verdict: {
+              agrees: verdict.agrees,
+              verdict: verdict.verdict,
+              confidence: verdict.confidence,
+              reasoning: verdict.reasoning,
+            },
+          });
+
+          // Only a logged purchase earns the interruption. A tray item is already paused,
+          // so its argument is shown on the card rather than in front of the person.
+          if (!verdict.agrees && verdict.reasoning && kind === "transaction") {
+            patchUi({ retractionFor: subjectId });
+          }
+        })
+        .catch((error) => {
+          // Silence is a valid outcome: the engine advises, so no answer means no argument.
+          console.error("[bucket] verdict request failed", error);
         });
-      })
-      .catch((error) => {
-        // Silence is a valid outcome: the engine advises, so no answer means no argument.
-        console.error("[bucket] verdict request failed", error);
-      });
-  });
+    },
+  );
 
   const confirmPurchase = useEvent((data: PurchaseInput) => {
     const id = crypto.randomUUID();
@@ -229,13 +246,17 @@ export function BucketProvider({
     else playWant();
 
     // Fire and forget — see requestVerdictFor. Nothing below waits on this.
-    requestVerdictFor(id, {
-      amount: data.amount,
-      label: data.label,
-      bucketId: data.bucketId,
-      intent: data.intent,
-      readinessTag: data.readinessTag ?? null,
-    });
+    requestVerdictFor(
+      id,
+      {
+        amount: data.amount,
+        label: data.label,
+        bucketId: data.bucketId,
+        intent: data.intent,
+        readinessTag: data.readinessTag ?? null,
+      },
+      "transaction",
+    );
   });
 
   const sleepOnIt = useEvent((data: SleepInput) => {
@@ -258,13 +279,17 @@ export function BucketProvider({
     patchUi({ tab: "pending" });
 
     // The tray is a 24h window, so there is all the time in the world for this to land.
-    requestVerdictFor(id, {
-      amount: data.amount,
-      label: data.label,
-      bucketId: data.bucketId,
-      intent,
-      readinessTag: data.readinessTag ?? null,
-    });
+    requestVerdictFor(
+      id,
+      {
+        amount: data.amount,
+        label: data.label,
+        bucketId: data.bucketId,
+        intent,
+        readinessTag: data.readinessTag ?? null,
+      },
+      "pending",
+    );
   });
 
   const confirmPending = useEvent((id: string) => {
@@ -407,6 +432,31 @@ export function BucketProvider({
     });
   });
 
+  const retractToTray = useEvent((transactionId: string) => {
+    const tx = state.transactions.find((t) => t.id === transactionId);
+    if (!tx) return;
+
+    dispatch({
+      type: "RETRACT_TO_TRAY",
+      transactionId,
+      pendingId: crypto.randomUUID(),
+      createdAt: Date.now(),
+    });
+    patchUi({ retractionFor: null, tab: "pending" });
+
+    toast("Pulled back", {
+      description: `${formatCurrency(tx.amount)} returned to your bucket — it can wait.`,
+      duration: 5000,
+    });
+  });
+
+  const overrideVerdict = useEvent((transactionId: string) => {
+    dispatch({ type: "OVERRIDE_VERDICT", transactionId });
+    patchUi({ retractionFor: null });
+  });
+
+  const dismissRetraction = useEvent(() => patchUi({ retractionFor: null }));
+
   const resetAll = useEvent(() => {
     dispatch({ type: "RESET" });
     setUi((prev) => ({ ...INITIAL_UI, muted: prev.muted, parentMode: prev.parentMode }));
@@ -426,6 +476,9 @@ export function BucketProvider({
       setTrip,
       completeTrip,
       resetAll,
+      retractToTray,
+      overrideVerdict,
+      dismissRetraction,
       setTab: (tab) => patchUi({ tab }),
       setPurchaseOpen: (purchaseOpen) => patchUi({ purchaseOpen }),
       setNewBucketOpen: (newBucketOpen) => patchUi({ newBucketOpen }),
@@ -450,6 +503,9 @@ export function BucketProvider({
       setTrip,
       completeTrip,
       resetAll,
+      retractToTray,
+      overrideVerdict,
+      dismissRetraction,
       patchUi,
     ],
   );

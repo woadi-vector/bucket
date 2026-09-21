@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { TripPlanner } from "@/components/bucket/TripPlanner";
 import { parseReceipt } from "@/lib/receipt-ocr";
 import { DemoOverlay } from "@/components/bucket/DemoOverlay";
+import { RetractionCard } from "@/components/bucket/RetractionCard";
 import { BucketProvider, useBucketActions, useBucketState } from "@/lib/bucket/provider";
 import { useDemo } from "@/lib/bucket/use-demo";
 import { loadBucketState } from "@/lib/bucket/server-fns";
@@ -73,6 +74,9 @@ function Index() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const total = useMemo(() => buckets.reduce((s, b) => s + b.balance, 0), [buckets]);
+  const retraction = ui.retractionFor
+    ? (transactions.find((t) => t.id === ui.retractionFor) ?? null)
+    : null;
   const kidsBucket = buckets.find((b) => b.ownerType === "child");
   const recent = transactions.slice(0, 5);
 
@@ -431,6 +435,14 @@ function Index() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <RetractionCard
+        transaction={retraction}
+        bucketName={buckets.find((b) => b.id === retraction?.bucketId)?.name}
+        onRetract={() => retraction && actions.retractToTray(retraction.id)}
+        onOverride={() => retraction && actions.overrideVerdict(retraction.id)}
+        onDismiss={actions.dismissRetraction}
+      />
 
       <DemoOverlay
         active={demo.active}

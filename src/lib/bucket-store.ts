@@ -42,6 +42,9 @@ export type Bucket = {
   accent: string;
 };
 
+/** How a person answered a contested tag. Bucket advises; this is them deciding. */
+export type VerdictResponse = "retracted" | "overridden";
+
 /**
  * The app's view of an engine verdict: the four contract fields and nothing else.
  *
@@ -67,6 +70,13 @@ export type Transaction = {
   readinessTag: ReadinessTag | null;
   /** Filled in asynchronously after the purchase is logged; null while in flight. */
   verdict?: PurchaseVerdict | null;
+  /**
+   * What the person did when Bucket contested this tag.
+   *
+   * The plan requires recording both the model's verdict and the user's final call, and this
+   * is the second half. `null` means they have not been asked yet or the engine agreed.
+   */
+  verdictResponse?: VerdictResponse | null;
 };
 
 /**

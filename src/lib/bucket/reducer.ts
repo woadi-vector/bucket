@@ -57,7 +57,9 @@ export type BucketAction =
   | { type: "PARENT_REQUEST_CREATE"; request: ParentRequest }
   | { type: "PARENT_REQUEST_RESOLVE"; id: string; status: "approved" | "denied" }
   | { type: "SET_TRIP"; trip: Trip | null }
-  | { type: "ATTACH_VERDICT"; subjectId: string; verdict: PurchaseVerdict };
+  | { type: "ATTACH_VERDICT"; subjectId: string; verdict: PurchaseVerdict }
+  | { type: "RETRACT_TO_TRAY"; transactionId: string; pendingId: string; createdAt: number }
+  | { type: "OVERRIDE_VERDICT"; transactionId: string };
 
 export function bucketReducer(state: BucketState, action: BucketAction): BucketState {
   switch (action.type) {
@@ -168,6 +170,51 @@ export function bucketReducer(state: BucketState, action: BucketAction): BucketS
         pending: state.pending.map((p) => (p.id === subjectId ? { ...p, verdict } : p)),
       };
     }
+
+    /**
+     * The person accepted Bucket's second thought and pulled a logged purchase back.
+     *
+     * The money returns to its bucket and the item moves into the Sleep On It tray, which is
+     * where undecided things live. This is only ever reached from an explicit button press —
+     * Bucket offers, it never retracts a purchase on its own.
+     */
+    case "RETRACT_TO_TRAY": {
+      const tx = state.transactions.find((t) => t.id === action.transactionId);
+      if (!tx) return state;
+
+      return {
+        ...state,
+        buckets: state.buckets.map((b) =>
+          b.id === tx.bucketId ? { ...b, balance: b.balance + tx.amount } : b,
+        ),
+        // The transaction is removed rather than flagged: the purchase did not happen yet.
+        // The decision itself survives on the pending item, which carries the verdict.
+        transactions: state.transactions.filter((t) => t.id !== action.transactionId),
+        pending: [
+          {
+            id: action.pendingId,
+            amount: tx.amount,
+            label: tx.label,
+            bucketId: tx.bucketId,
+            createdAt: action.createdAt,
+            hoursLeft: 23,
+            intent: tx.intent,
+            readinessTag: tx.readinessTag,
+            verdict: tx.verdict ?? null,
+          },
+          ...state.pending,
+        ],
+      };
+    }
+
+    /** The person considered the argument and kept their own call. Both are recorded. */
+    case "OVERRIDE_VERDICT":
+      return {
+        ...state,
+        transactions: state.transactions.map((t) =>
+          t.id === action.transactionId ? { ...t, verdictResponse: "overridden" } : t,
+        ),
+      };
 
     default:
       return state;

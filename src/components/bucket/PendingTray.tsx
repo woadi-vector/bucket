@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Bucket, PendingWant, SLEEP_THRESHOLD, formatCurrency } from "@/lib/bucket-store";
 import { Button } from "@/components/ui/button";
-import { Clock, Sparkles } from "lucide-react";
+import { Clock, Sparkles, Scale } from "lucide-react";
 
 type Props = {
   items: PendingWant[];
@@ -65,6 +65,20 @@ export function PendingTray({ items, buckets, onConfirm, onLetGo }: Props) {
                   </div>
                 </div>
               </div>
+              {/* A contested tag, argued on the card. The item is already paused, so this
+                  informs the decision rather than interrupting to demand one. */}
+              {p.verdict && !p.verdict.agrees && p.verdict.reasoning && (
+                <div className="mt-3.5 rounded-xl bg-secondary/60 px-3.5 py-3">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-primary/80">
+                    <Scale className="h-3 w-3" />
+                    Bucket thinks this is a {p.verdict.verdict}
+                  </div>
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                    {p.verdict.reasoning}
+                  </p>
+                </div>
+              )}
+
               <div className="mt-4 flex gap-2">
                 <Button
                   variant="outline"
