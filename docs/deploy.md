@@ -165,19 +165,49 @@ node -e "const{readFileSync}=require('fs'),{execSync}=require('child_process');c
 
 ## Budget
 
-Spend is capped in `src/lib/server/budget.ts`: a global ceiling of **$10**, plus 60 verdicts and
-10 escalations per session. At measured rates a verdict costs 64–73 µ$, so $10 is roughly 144,000
-Nano verdicts. The cap exists to bound a runaway loop or someone hammering a login-free endpoint,
-not to ration the budget.
+Two independent limits, both checked before any paid call.
+
+**Global ceiling — across every session, configurable without a code change.** Before each Token
+Factory call (the screening pass and any escalation) the engine asks whether total verdicts or
+total tokens in `model_usage` have reached their limit. Once either has, it stops calling the model
+and serves a **cached verdict**: it agrees with the user, carries `cached: true`, and says in its
+reasoning that no model was consulted. The app stays fully usable — purchases log, the tray works,
+and no retraction is ever raised off a verdict nobody reasoned about.
+
+| var                    | default | counts                                              |
+| ---------------------- | ------- | --------------------------------------------------- |
+| `GLOBAL_VERDICT_LIMIT` | 5000    | screening calls — one per verdict, escalated or not |
+| `GLOBAL_TOKEN_LIMIT`   | 5000000 | tokens across both tiers                            |
+
+5M tokens is at most ~$10 even if every token were billed at the conservative Ultra price, and far
+less in practice since most verdicts never escalate. `0` is a kill switch that stops all model
+calls. A value that is not a non-negative number is ignored with a warning and the default is used,
+rather than being read as 0 and silently switching the model off.
+
+Change them without editing code:
+
+```bash
+npx wrangler deploy --var GLOBAL_TOKEN_LIMIT:2000000
+```
+
+or edit `vars` in `wrangler.jsonc` and redeploy. Every trip is logged:
+
+```bash
+npx wrangler tail | grep "GLOBAL CEILING"
+# [budget] GLOBAL CEILING TRIPPED — serving cached verdict (verdicts 5000/5000)
+```
+
+**Per-session caps — unchanged.** 60 verdicts and 10 escalations per visitor, in
+`BUDGET` in `src/lib/server/budget.ts`. A session over its cap gets the plain fallback (agrees, not
+marked cached), exactly as before.
+
+Both guards fail **open** on a ledger read error: a broken table should not take the demo offline.
 
 To watch spend on the live site:
 
 ```bash
 npm run db:spend
 ```
-
-If the guard starts declining calls, raise `BUDGET.totalUsd` and redeploy. The app does not break
-when capped — the engine degrades to agreeing with the user.
 
 ---
 

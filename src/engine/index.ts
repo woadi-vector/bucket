@@ -17,7 +17,7 @@ import type { ModelAdapter } from "./adapter";
 import { buildVerdictPrompt } from "./prompt";
 import { parseVerdict, VerdictParseError } from "./parse";
 import { createStubAdapter } from "./stub-adapter";
-import type { ModelTier, Verdict, VerdictRequest, VerdictTelemetry } from "./types";
+import type { CeilingStatus, ModelTier, Verdict, VerdictRequest, VerdictTelemetry } from "./types";
 
 export type { ModelAdapter, ChatMessage, CompletionRequest, CompletionResponse } from "./adapter";
 export type {
@@ -30,6 +30,7 @@ export type {
   VerdictTelemetry,
   ModelTier,
   TokenUsage,
+  CeilingStatus,
 } from "./types";
 export { VerdictParseError } from "./parse";
 export { createStubAdapter } from "./stub-adapter";
@@ -83,6 +84,16 @@ export type EngineOptions = {
    * engine knowing anything about storage.
    */
   onUsage?: (event: UsageEvent) => void | Promise<void>;
+  /**
+   * Asked before *every* Token Factory call — the screening pass and any escalation.
+   *
+   * The global spend ceiling lives in a ledger the engine deliberately cannot see, so the
+   * caller answers. When it reports the ceiling reached before screening, the engine makes
+   * no call at all and returns a cached verdict. When it trips between screening and
+   * escalation, the engine keeps the real screening verdict it already paid for and skips
+   * the expensive tier. Omitted means no ceiling.
+   */
+  checkCeiling?: () => CeilingStatus | Promise<CeilingStatus>;
   signal?: AbortSignal;
   /** Injectable clock, so history phrasing is deterministic under test. */
   now?: number;
@@ -104,6 +115,11 @@ export async function judgeTransaction(
   const adapter = options.adapter ?? createStubAdapter();
   const screeningTier: ModelTier = adapter.name === "stub" ? "stub" : "nano";
 
+  // The stub costs nothing, so the ceiling only guards real providers.
+  if (screeningTier !== "stub" && (await ceilingReached(options))) {
+    return cachedVerdict(request, adapter.name);
+  }
+
   const screening = await runTier(request, options, adapter, screeningTier);
   await options.onUsage?.({ telemetry: screening.telemetry!, agrees: screening.agrees });
 
@@ -114,6 +130,11 @@ export async function judgeTransaction(
   }
 
   if (!options.canEscalate || !(await options.canEscalate())) {
+    return screening;
+  }
+
+  // The screening call just added to the ledger, so ask again before the expensive tier.
+  if (await ceilingReached(options)) {
     return screening;
   }
 
@@ -133,6 +154,45 @@ export async function judgeTransaction(
   return {
     ...adjudication,
     telemetry: { ...adjudication.telemetry!, escalatedFrom: screeningTier },
+  };
+}
+
+/** Fails open: if the caller's ceiling check itself throws, the engine carries on. */
+async function ceilingReached(options: EngineOptions): Promise<boolean> {
+  if (!options.checkCeiling) return false;
+  try {
+    return (await options.checkCeiling()).reached;
+  } catch (error) {
+    console.error("[engine] ceiling check failed; proceeding", error);
+    return false;
+  }
+}
+
+export const CACHED_REASONING =
+  "Cached response: Bucket's shared model budget for this demo is used up, so no model was consulted. Your own call stands.";
+
+/**
+ * The canned answer served once the global spend ceiling is reached.
+ *
+ * It agrees with the user, deliberately. No model looked at this purchase, so Bucket has no
+ * argument to make, and the product rule is that it advises rather than enforces. Agreeing
+ * also means the app stays fully usable: purchases log, the tray works, and no retraction is
+ * ever raised off the back of a verdict nobody actually reasoned about.
+ */
+function cachedVerdict(request: VerdictRequest, adapterName: string): Verdict {
+  return {
+    agrees: true,
+    verdict: request.purchase.intent,
+    confidence: 0,
+    reasoning: CACHED_REASONING,
+    cached: true,
+    telemetry: {
+      tier: "stub",
+      model: "none",
+      adapter: adapterName,
+      latencyMs: 0,
+      cached: true,
+    },
   };
 }
 

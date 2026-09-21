@@ -140,8 +140,12 @@ gets a fresh seeded app.
 | `docs/`                  | Token Factory findings, deploy runbook                       |
 
 **Spend is capped.** The demo URL has no login, so anyone can trigger paid inference. A ledger in
-D1 records every call with its tokens and cost, and a guard enforces a global ceiling plus
-per-session limits before any paid call. See [`src/lib/server/budget.ts`](src/lib/server/budget.ts).
+D1 records every call with its tokens and cost. Before each Token Factory call the engine checks a
+**global ceiling** on total verdicts and tokens across all sessions — configured as Wrangler vars
+(`GLOBAL_VERDICT_LIMIT`, `GLOBAL_TOKEN_LIMIT`), so it can be changed without a code edit. Once it
+trips, the model is no longer called and the app serves a cached verdict clearly marked as such,
+while staying fully usable. Per-session caps sit alongside it. See
+[docs/deploy.md](docs/deploy.md#budget) and [`src/lib/server/budget.ts`](src/lib/server/budget.ts).
 
 ## License
 

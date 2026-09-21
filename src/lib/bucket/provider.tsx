@@ -210,12 +210,15 @@ export function BucketProvider({
               verdict: verdict.verdict,
               confidence: verdict.confidence,
               reasoning: verdict.reasoning,
+              ...(verdict.cached ? { cached: true } : {}),
             },
           });
 
           // Only a logged purchase earns the interruption. A tray item is already paused,
           // so its argument is shown on the card rather than in front of the person.
-          if (!verdict.agrees && verdict.reasoning && kind === "transaction") {
+          // A cached verdict always agrees, but check explicitly: nothing canned may ever
+          // raise an argument in front of someone.
+          if (!verdict.agrees && !verdict.cached && verdict.reasoning && kind === "transaction") {
             patchUi({ retractionFor: subjectId });
           }
         })

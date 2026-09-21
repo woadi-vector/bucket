@@ -35,6 +35,9 @@ stub and the real Phase 3 model call.
   Model selection, prompting, tiering and parsing all happen in here.
 - **It never throws.** A provider outage or an unparseable answer degrades to agreeing with the
   user, flagged as `telemetry.degraded`. Bucket advises; silence means no argument to make.
+- **It spends only with permission.** An optional `checkCeiling()` hook is asked before every model
+  call. The engine cannot see the spend ledger, so the caller answers; when the ceiling is reached
+  the engine makes no call and returns a verdict marked `cached: true` that agrees with the user.
 
 `agrees` is derived by comparing the verdict to the user's own tag, never read from the model's
 response — it drives escalation, and a model asked to restate a boolean it could compute will

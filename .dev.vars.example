@@ -12,3 +12,8 @@
 # directly as a convenience.
 
 NEBIUS_API_KEY=
+
+# Optional: global spend ceiling for local runs. Production values live under `vars` in
+# wrangler.jsonc. Set either to 0 to stop all model calls and see cached verdicts.
+# GLOBAL_VERDICT_LIMIT=5000
+# GLOBAL_TOKEN_LIMIT=5000000

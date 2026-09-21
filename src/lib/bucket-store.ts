@@ -58,6 +58,8 @@ export type PurchaseVerdict = {
   verdict: "want" | "need";
   confidence: number;
   reasoning: string;
+  /** True when served from the global spend ceiling rather than by a model. */
+  cached?: boolean;
 };
 
 export type Transaction = {

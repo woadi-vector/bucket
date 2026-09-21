@@ -65,8 +65,19 @@ export function getDb(): D1Database | undefined {
  * Server-only. Nothing that reaches the browser may import this.
  */
 export function getSecret(name: string): string | undefined {
+  return getEnvVar(name);
+}
+
+/**
+ * A Workers `vars` entry or secret, falling back to `process.env` in development.
+ *
+ * Wrangler passes `vars` through the same env object as secrets, but a var written as a JSON
+ * number arrives as a number, so both are normalised to strings here.
+ */
+export function getEnvVar(name: string): string | undefined {
   const fromWorkers = getCloudflareEnv()?.[name];
   if (typeof fromWorkers === "string" && fromWorkers) return fromWorkers;
+  if (typeof fromWorkers === "number" && Number.isFinite(fromWorkers)) return String(fromWorkers);
 
   if (typeof process !== "undefined" && process.env) {
     const fromNode = process.env[name];

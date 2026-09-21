@@ -65,7 +65,17 @@ export type VerdictTelemetry = {
   degraded?: boolean;
   /** Set on an adjudication: the tier whose disagreement triggered the escalation. */
   escalatedFrom?: ModelTier;
+  /** True when no model was called because the global spend ceiling had been reached. */
+  cached?: boolean;
 };
+
+/**
+ * The caller's answer to "may the engine spend money right now?".
+ *
+ * The engine cannot read the spend ledger itself — it never touches storage — so the
+ * caller supplies this. `reason` is for logs, never for the person using the app.
+ */
+export type CeilingStatus = { reached: false } | { reached: true; reason: string };
 
 /**
  * The engine's output. The first four fields are the contract named in the plan and must
@@ -78,5 +88,11 @@ export type Verdict = {
   /** 0..1. */
   confidence: number;
   reasoning: string;
+  /**
+   * True when this is a canned answer served because the global spend ceiling was reached.
+   * A cached verdict always agrees with the user: with no model consulted, Bucket has no
+   * argument to make, so it must never be mistaken for one.
+   */
+  cached?: boolean;
   telemetry?: VerdictTelemetry;
 };

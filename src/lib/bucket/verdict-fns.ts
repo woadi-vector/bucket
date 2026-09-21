@@ -3,7 +3,7 @@ import { createTokenFactoryAdapter, judgeTransaction } from "@/engine";
 import type { Verdict, VerdictRequest } from "@/engine";
 import { getSecret } from "@/lib/server-env";
 import { getOrCreateSessionId } from "@/lib/server/session";
-import { checkBudget, recordUsage } from "@/lib/server/budget";
+import { checkBudget, checkGlobalCeiling, recordUsage } from "@/lib/server/budget";
 
 /**
  * The server side of the verdict call.
@@ -96,6 +96,10 @@ export const requestVerdict = createServerFn({ method: "POST" })
       // Fires once per model call, so an escalated verdict writes two rows and the ledger
       // shows the split rather than only the tier that had the last word.
       onUsage: ({ telemetry, agrees }) => recordUsage({ sessionId, telemetry, agreed: agrees }),
+
+      // Across every session. Asked by the engine before each Token Factory call; once it
+      // trips, the engine stops calling the model and serves a cached verdict instead.
+      checkCeiling: checkGlobalCeiling,
     });
 
     // Telemetry names the model and its token cost. It stays server-side, in model_usage —
@@ -105,5 +109,8 @@ export const requestVerdict = createServerFn({ method: "POST" })
       verdict: verdict.verdict,
       confidence: verdict.confidence,
       reasoning: verdict.reasoning,
+      // Lets the client — and anyone reading the stored state — tell a canned answer from a
+      // model's. Only present when true, so ordinary verdicts are unchanged.
+      ...(verdict.cached ? { cached: true } : {}),
     };
   });
