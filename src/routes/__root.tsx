@@ -6,10 +6,15 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  type ErrorComponentProps,
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
+
+const BUCKET_TITLE = "Bucket — Decide before you spend";
+const BUCKET_DESCRIPTION =
+  "A calm budgeting app that pauses you before each purchase to decide want vs. need and pick a bucket.";
 
 function NotFoundComponent() {
   return (
@@ -33,7 +38,9 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+// Router hands the boundary an `unknown` error, not an Error — typing it as Error
+// here is what made this file fail `tsc` in the export.
+function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
 
@@ -73,38 +80,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      {
-        name: "description",
-        content:
-          "Intentional Wallet is a personal budgeting prototype that requires users to assign purchases to spending buckets before they are made.",
-      },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      {
-        property: "og:description",
-        content:
-          "Intentional Wallet is a personal budgeting prototype that requires users to assign purchases to spending buckets before they are made.",
-      },
+      { title: BUCKET_TITLE },
+      { name: "description", content: BUCKET_DESCRIPTION },
+      { name: "author", content: "Jason Wold" },
+      { property: "og:title", content: BUCKET_TITLE },
+      { property: "og:description", content: BUCKET_DESCRIPTION },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "Lovable App" },
-      {
-        name: "twitter:description",
-        content:
-          "Intentional Wallet is a personal budgeting prototype that requires users to assign purchases to spending buckets before they are made.",
-      },
-      {
-        property: "og:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/36393c17-71e8-4eb6-9e56-7f1af6ee8215/id-preview-a42b1293--851c851a-af9f-4766-950b-a887f7851849.lovable.app-1779569676961.png",
-      },
-      {
-        name: "twitter:image",
-        content:
-          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/36393c17-71e8-4eb6-9e56-7f1af6ee8215/id-preview-a42b1293--851c851a-af9f-4766-950b-a887f7851849.lovable.app-1779569676961.png",
-      },
+      { name: "twitter:title", content: BUCKET_TITLE },
+      { name: "twitter:description", content: BUCKET_DESCRIPTION },
+      // og:image / twitter:image intentionally absent: the export pointed them at a
+      // Lovable preview on a third-party R2 bucket we do not control. Add a real card
+      // image before submission rather than restoring that URL.
     ],
     links: [
       {
