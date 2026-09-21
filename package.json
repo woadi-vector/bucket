@@ -14,7 +14,8 @@
     "db:migrate:remote": "wrangler d1 migrations apply bucket-db --config wrangler.jsonc --remote",
     "db:tables": "wrangler d1 execute bucket-db --config wrangler.jsonc --remote --command \"SELECT name FROM sqlite_master WHERE type=(char(116)||char(97)||char(98)||char(108)||char(101)) ORDER BY name\"",
     "db:spend": "wrangler d1 execute bucket-db --config wrangler.jsonc --remote --command \"SELECT tier, COUNT(*) calls, SUM(total_tokens) tokens, ROUND(SUM(cost_micros)/1000000.0,4) usd FROM model_usage GROUP BY tier\"",
-    "check:secrets": "node scripts/check-no-secret-in-bundle.mjs"
+    "check:secrets": "node scripts/check-no-secret-in-bundle.mjs",
+    "check:engine": "node scripts/check-engine.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",

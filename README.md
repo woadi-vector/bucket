@@ -104,6 +104,17 @@ with you rather than failing.
 > `vite.config.ts` loads it into `process.env`. It deliberately does not go through `define` or
 > `import.meta.env`, either of which would inline the secret into the client bundle.
 
+### Checking the engine
+
+```bash
+npm run check:engine
+```
+
+Bundles `src/engine` on its own and runs `judgeTransaction` against fake adapters: the global
+spend ceiling, escalation, and failing closed. It never calls Token Factory and needs no key.
+`fetch` is replaced with one that throws, so a stray network call fails the run instead of
+spending. One `[engine] ceiling check threw` error line in the output is expected.
+
 ### Against the real Workers runtime
 
 `npm run dev` has no D1 binding and no Workers `env` — state falls back to an in-memory store. To
