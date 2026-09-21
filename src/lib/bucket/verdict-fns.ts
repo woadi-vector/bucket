@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { createTokenFactoryAdapter, judgeTransaction } from "@/engine";
 import type { Verdict, VerdictRequest } from "@/engine";
 import { getSecret } from "@/lib/server-env";
+import { getOrCreateSessionId } from "@/lib/server/session";
+import { checkBudget, recordUsage } from "@/lib/server/budget";
 
 /**
  * The server side of the verdict call.
@@ -68,5 +70,34 @@ export const requestVerdict = createServerFn({ method: "POST" })
       return judgeTransaction(data);
     }
 
-    return judgeTransaction(data, { adapter: createTokenFactoryAdapter({ apiKey }) });
+    const sessionId = getOrCreateSessionId();
+
+    // Nano screens every tagged purchase, and the demo URL has no login, so this is the
+    // one place a stranger can spend money. Check before the call, not after.
+    const decision = await checkBudget(sessionId, "nano");
+    if (!decision.allowed) {
+      console.warn(`[verdict] budget guard declined a call: ${decision.reason}`);
+      return judgeTransaction(data); // stub — degrades to agreeing with the user
+    }
+
+    const verdict = await judgeTransaction(data, {
+      adapter: createTokenFactoryAdapter({ apiKey }),
+    });
+
+    if (verdict.telemetry) {
+      await recordUsage({
+        sessionId,
+        telemetry: verdict.telemetry,
+        agreed: verdict.agrees,
+      });
+    }
+
+    // Telemetry names the model and its token cost. It stays server-side, in model_usage —
+    // the browser gets the four contract fields and no clue which model answered.
+    return {
+      agrees: verdict.agrees,
+      verdict: verdict.verdict,
+      confidence: verdict.confidence,
+      reasoning: verdict.reasoning,
+    };
   });

@@ -42,6 +42,21 @@ export type Bucket = {
   accent: string;
 };
 
+/**
+ * The app's view of an engine verdict: the four contract fields and nothing else.
+ *
+ * Declared here rather than imported from `@/engine` because this is deliberately a
+ * *subset*. The engine's `Verdict` also carries telemetry naming the model and its token
+ * cost, and that stays server-side — it is written to `model_usage` and surfaced only as
+ * an aggregate. Nothing shipped to the browser says which model answered.
+ */
+export type PurchaseVerdict = {
+  agrees: boolean;
+  verdict: "want" | "need";
+  confidence: number;
+  reasoning: string;
+};
+
 export type Transaction = {
   id: string;
   amount: number;
@@ -50,6 +65,8 @@ export type Transaction = {
   intent: "want" | "need";
   timestamp: number;
   readinessTag: ReadinessTag | null;
+  /** Filled in asynchronously after the purchase is logged; null while in flight. */
+  verdict?: PurchaseVerdict | null;
 };
 
 /**
@@ -69,6 +86,8 @@ export type PendingWant = {
   hoursLeft: number;
   intent: "want" | "need";
   readinessTag: ReadinessTag | null;
+  /** Filled in asynchronously while the item sits in the tray; null while in flight. */
+  verdict?: PurchaseVerdict | null;
 };
 
 export type ParentRequest = {

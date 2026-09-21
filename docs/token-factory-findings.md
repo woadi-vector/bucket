@@ -164,3 +164,26 @@ instinct to build async from the start was right even though one number behind i
 
 Worth adding: a network call of any duration can also fail or hang, and tail latency is not
 mean latency. Three runs on an idle endpoint says nothing about p99 under load.
+
+**Update from the wired-up app.** Once verdicts were being requested by the running product
+rather than a benchmark script, two consecutive Nano calls of near-identical size came back
+at **1964 ms and 3796 ms** — a 1.9x spread on the same tier, same prompt shape, same machine.
+Nano's slow case overlaps Ultra's typical case. Any design that depends on the cheap tier
+being reliably quick is depending on something that is not stable.
+
+---
+
+## 6. What a verdict actually costs
+
+Measured from the app's own ledger (`model_usage`), real calls:
+
+|                               | tokens                            | est. cost | latency |
+| ----------------------------- | --------------------------------- | --------- | ------- |
+| Nano verdict, 4 history items | 655 (351 prompt / 304 completion) | 66 µ$     | 1964 ms |
+| Nano verdict, 5 history items | 730                               | 73 µ$     | 3796 ms |
+
+At those rates the app's $10 internal ceiling is roughly **144,000 Nano verdicts** — far more
+than a hackathon demo will ever use. The cap exists to bound a runaway loop or a stranger
+hammering an endpoint that has no login, not to ration a budget that was never going to run
+out. Cost estimates use deliberately conservative price constants (see
+`src/lib/server/budget.ts`), so the true number is likely higher still.

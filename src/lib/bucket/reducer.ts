@@ -2,6 +2,7 @@ import {
   Bucket,
   ParentRequest,
   PendingWant,
+  PurchaseVerdict,
   Transaction,
   Trip,
   SAVINGS_BUCKET_ID,
@@ -55,7 +56,8 @@ export type BucketAction =
   | { type: "SET_CHILD_LIMIT"; limit: number | null }
   | { type: "PARENT_REQUEST_CREATE"; request: ParentRequest }
   | { type: "PARENT_REQUEST_RESOLVE"; id: string; status: "approved" | "denied" }
-  | { type: "SET_TRIP"; trip: Trip | null };
+  | { type: "SET_TRIP"; trip: Trip | null }
+  | { type: "ATTACH_VERDICT"; subjectId: string; verdict: PurchaseVerdict };
 
 export function bucketReducer(state: BucketState, action: BucketAction): BucketState {
   switch (action.type) {
@@ -150,6 +152,22 @@ export function bucketReducer(state: BucketState, action: BucketAction): BucketS
 
     case "SET_TRIP":
       return { ...state, trip: action.trip };
+
+    /**
+     * A verdict arriving after the fact.
+     *
+     * The model call is fired without being awaited, so by the time it lands the item may
+     * have moved, been released, or been undone. Matching on id across both collections and
+     * silently doing nothing when it is gone is the correct behaviour, not an error case.
+     */
+    case "ATTACH_VERDICT": {
+      const { subjectId, verdict } = action;
+      return {
+        ...state,
+        transactions: state.transactions.map((t) => (t.id === subjectId ? { ...t, verdict } : t)),
+        pending: state.pending.map((p) => (p.id === subjectId ? { ...p, verdict } : p)),
+      };
+    }
 
     default:
       return state;

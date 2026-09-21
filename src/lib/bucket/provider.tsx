@@ -21,6 +21,7 @@ import { useBucketSounds } from "@/lib/use-bucket-sounds";
 import { useEvent } from "@/lib/use-event";
 import { bucketReducer, createInitialState, type BucketState } from "./reducer";
 import { saveBucketState } from "./server-fns";
+import { requestVerdict } from "./verdict-fns";
 
 /** How long to wait after the last change before persisting. */
 const SAVE_DEBOUNCE_MS = 800;
@@ -61,6 +62,15 @@ type PurchaseInput = {
   bucketId: string;
   intent: "want" | "need";
   readinessTag?: ReadinessTag | null;
+};
+
+/** What the engine needs to judge one purchase, in the app's own vocabulary. */
+type VerdictSubject = {
+  amount: number;
+  label: string;
+  bucketId: string;
+  intent: "want" | "need";
+  readinessTag: ReadinessTag | null;
 };
 
 type SleepInput = {
@@ -151,39 +161,110 @@ export function BucketProvider({
     window.setTimeout(() => patchUi({ justUpdatedId: null }), 1000);
   });
 
+  /**
+   * Asks the engine to judge a tag, and attaches the answer whenever it arrives.
+   *
+   * Deliberately **not** awaited by its callers. Measured latency is ~2.1s for the cheap
+   * tier and ~3.6s for the expensive one, so awaiting this anywhere in the purchase flow
+   * would put multiple seconds inside a screen designed as a half-second pause — the exact
+   * beat the product exists to create. The verdict lands when it lands; if the item is gone
+   * by then the reducer ignores it.
+   */
+  const requestVerdictFor = useEvent((subjectId: string, subject: VerdictSubject) => {
+    const bucketName = (id: string) => state.buckets.find((b) => b.id === id)?.name;
+
+    const history = state.transactions.slice(0, 20).map((t) => ({
+      amount: t.amount,
+      label: t.label,
+      intent: t.intent,
+      readinessTag: t.readinessTag,
+      timestamp: t.timestamp,
+      bucketName: bucketName(t.bucketId),
+    }));
+
+    const purchase = {
+      amount: subject.amount,
+      label: subject.label,
+      intent: subject.intent,
+      readinessTag: subject.readinessTag,
+      bucketName: bucketName(subject.bucketId),
+    };
+
+    void requestVerdict({ data: { purchase, history } })
+      .then((verdict) => {
+        dispatch({
+          type: "ATTACH_VERDICT",
+          subjectId,
+          verdict: {
+            agrees: verdict.agrees,
+            verdict: verdict.verdict,
+            confidence: verdict.confidence,
+            reasoning: verdict.reasoning,
+          },
+        });
+      })
+      .catch((error) => {
+        // Silence is a valid outcome: the engine advises, so no answer means no argument.
+        console.error("[bucket] verdict request failed", error);
+      });
+  });
+
   const confirmPurchase = useEvent((data: PurchaseInput) => {
+    const id = crypto.randomUUID();
     dispatch({
       type: "CONFIRM_PURCHASE",
       transaction: {
-        id: crypto.randomUUID(),
+        id,
         amount: data.amount,
         label: data.label,
         bucketId: data.bucketId,
         intent: data.intent,
         timestamp: Date.now(),
         readinessTag: data.readinessTag ?? null,
+        verdict: null,
       },
     });
     pulse(data.bucketId);
     if (data.intent === "need") playNeed();
     else playWant();
+
+    // Fire and forget — see requestVerdictFor. Nothing below waits on this.
+    requestVerdictFor(id, {
+      amount: data.amount,
+      label: data.label,
+      bucketId: data.bucketId,
+      intent: data.intent,
+      readinessTag: data.readinessTag ?? null,
+    });
   });
 
   const sleepOnIt = useEvent((data: SleepInput) => {
+    const id = crypto.randomUUID();
+    const intent = data.intent ?? "want";
     dispatch({
       type: "SLEEP_ON_IT",
       item: {
-        id: crypto.randomUUID(),
+        id,
         amount: data.amount,
         label: data.label,
         bucketId: data.bucketId,
         createdAt: Date.now(),
         hoursLeft: 23,
-        intent: data.intent ?? "want",
+        intent,
         readinessTag: data.readinessTag ?? null,
+        verdict: null,
       },
     });
     patchUi({ tab: "pending" });
+
+    // The tray is a 24h window, so there is all the time in the world for this to land.
+    requestVerdictFor(id, {
+      amount: data.amount,
+      label: data.label,
+      bucketId: data.bucketId,
+      intent,
+      readinessTag: data.readinessTag ?? null,
+    });
   });
 
   const confirmPending = useEvent((id: string) => {
