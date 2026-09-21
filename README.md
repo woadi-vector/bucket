@@ -1,124 +1,148 @@
 # Bucket
 
-Build a polished frontend-only prototype for a personal budgeting app called
+**Every other budgeting app is a bookkeeper. Bucket interrupts the decision before the money
+moves — and then argues with you about it.**
 
-"Bucket" (placeholder name — easy to rename). This is a clickable demo: NO
+You tag a purchase a want or a need. Bucket reads that tag against your own spending history
+and, when it disagrees, says so:
 
-backend, NO auth, NO real bank APIs. All data lives in in-memory React state,
+> You've now labeled three expensive tech/office items (standing desk, mechanical keyboard,
+> headphones) as "needs" from your Dining Out bucket, all decided on the spot. The only actual
+> dining expense (ramen) you correctly called a want. This pattern suggests you're rationalizing
+> upgrades as necessities.
+>
+> — `nvidia/Nemotron-3-Ultra-550b-a55b`, on a real purchase in this app
 
-hardcoded to start. Optimize for a beautiful, satisfying demo, not real
+It then **offers** to pull the purchase back so you can sleep on it. You can always say no.
+Bucket advises; it does not enforce, and it does not predict.
 
-infrastructure.
+---
 
-THE CORE IDEA:
+## How NVIDIA Nemotron models are used
 
-Most budgeting apps track spending after it happens. Bucket moves the decision
+Two tiers, both served by **Nebius Token Factory**, and the split is the point.
 
-to the FRONT — before any purchase clears, the user must consciously assign it
+| tier         | model                                   | when it runs                     |
+| ------------ | --------------------------------------- | -------------------------------- |
+| screening    | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | every tagged purchase            |
+| adjudication | `nvidia/Nemotron-3-Ultra-550b-a55b`     | only when Nano contests your tag |
 
-to a spending "bucket" and tag it as a WANT or a NEED. That deliberate pause is
+**Nano screens everything.** It is asked one question: does this person's own label hold up
+against how they have labelled their own spending before?
 
-the entire product. Make that moment feel great.
+**Ultra adjudicates only the contested calls.** When Nano disagrees with you, the 550B model is
+asked the _same_ question independently — not "a smaller model objected, what do you think?",
+which would invite deference and make scoring the two tiers against each other meaningless.
 
-THREE SCREENS:
+Measured from this app's own ledger, one contested purchase:
 
-1. BUCKET DASHBOARD (home)
+| tier  | prompt | completion | cost    | latency |
+| ----- | ------ | ---------- | ------- | ------- |
+| nano  | 363    | 269        | 64 µ$   | 2160 ms |
+| ultra | 363    | 425        | 1576 µ$ | 2528 ms |
 
-- Show 4 hardcoded buckets as cards: Groceries ($420), Dining Out ($85),
+Ultra costs **24.6x** a Nano call for 1.25x the tokens. Stated precisely: the saving comes from
+price per token, not from the cheap tier doing less work.
 
-  Kids' Allowance ($50), Savings ($1,200). Each card shows name, current
+**Neither call ever blocks you.** Both tiers are seconds-scale, so the verdict is fired without
+being awaited and attaches whenever it lands. The interception screen stays the half-second beat
+it was designed to be.
 
-  balance, and a subtle progress/spent indicator.
+## Where Token Factory fits
 
-- A clear total-balance header at top.
+Everything reaches Token Factory's OpenAI-compatible API at
+`https://api.tokenfactory.nebius.com/v1` through a single adapter,
+[`src/engine/token-factory-adapter.ts`](src/engine/token-factory-adapter.ts). Swapping providers
+means writing one adapter and touching nothing else.
 
-- A primary button: "New Purchase" — this launches the interception flow.
+The API key is a Cloudflare Workers secret, read server-side only. A committed check,
+[`scripts/check-no-secret-in-bundle.mjs`](scripts/check-no-secret-in-bundle.mjs), scans the built
+client output for both the key's value and its name and fails the build path if either appears.
 
-- Let users create a new bucket (name + starting amount) via a simple modal.
+**We probed the API before building on it, and four widely-repeated assumptions were wrong.**
+Model ids are namespaced `nvidia/` and the commonly-cited `Llama-3_1-Nemotron-Ultra-253B-v1`
+does not exist. The `reasoning_content` quirk does not reproduce. Tool calls work fine. And the
+real hazard is `max_tokens`: set it too low and the API returns **HTTP 200 with an empty content
+string**, which reads like a bad prompt rather than a truncation.
 
-2. PURCHASE INTERCEPTION (the star — make this shine)
+All of it, with raw numbers and the measurements that corrected our own first conclusions:
+**[docs/token-factory-findings.md](docs/token-factory-findings.md)**. Re-runnable via
+`node scripts/probe-token-factory.mjs`.
 
-- Triggered by "New Purchase." User enters an amount and a merchant/label.
+## The verdict engine is a separate thing from the app
 
-- Then a deliberate, full-attention step: "Is this a WANT or a NEED?"
+[`src/engine/`](src/engine/) is standalone. It imports nothing from React, the components, or the
+routes; history is passed in rather than read from storage; callers supply a transport adapter but
+never choose a model. The boundary is enforced by `no-restricted-imports` in `eslint.config.js`,
+not by convention.
 
-  Two large, tactile toggle buttons. This choice is required to proceed.
+The test is whether it runs with the rest of the app deleted:
 
-- Then: "Which bucket?" — pick from the bucket cards.
-
-- Then a confirmation moment with a satisfying micro-interaction (gentle
-
-  animation, haptic-style pulse, checkmark) and the chosen bucket's balance
-
-  visibly ticks down in real time afterward.
-
-- The whole flow should feel like a calm checkpoint that makes you DECIDE —
-
-  not a nag, not a warning. A half-second of intentionality.
-
-3. PARENTAL VIEW (toggle in header)
-
-- A switch flips the dashboard into "Parent" mode.
-
-- In parent mode, the user can set a spending limit on the Kids' Allowance
-
-  bucket. If a purchase would exceed it, the interception flow shows a soft
-
-  guardrail message instead of approving.
-
-DATA MODEL (keep it modular):
-
-- Bucket: { id, name, balance, limit (nullable), ownerType: "self" | "child" }
-
-- Transaction: { id, amount, label, bucketId, intent: "want" | "need",
-
-  timestamp, readinessTag }
-
-- Include readinessTag on every transaction as a hidden field (default null /
-
-  dummy value). Do NOT surface it anywhere in the UI — it's reserved for future
-
-  use. Just keep it in the schema.
-
-AESTHETIC:
-
-- Clean, modern, trustworthy, premium. This is shared/family money, so warm and
-
-  calm — not cold or tactical. Soft neutral background, one confident accent
-
-  color, generous whitespace, rounded cards, crisp typography.
-
-- Where it should feel high-end is in PRECISION: tight spacing, smooth
-
-  transitions, responsive tactile feedback on every tap. The polish lives in
-
-  the interactions, not in heavy chrome.
-
-- Fully responsive; looks great on mobile.
-
-Prioritize one flawless happy-path loop: view buckets → New Purchase → want/need
-
-→ pick bucket → satisfying confirm → balance updates. Get that perfect first.
-
-This project was built with [Lovable](https://lovable.dev).
-
-**Live app**: https://intentional-spending-hub.lovable.app
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/851c851a-af9f-4766-950b-a887f7851849).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+```bash
+npx esbuild src/engine/index.ts --bundle --platform=neutral --format=esm --outfile=engine.mjs
 ```
+
+It bundles to ~11 KB with zero external imports. That is what lets the evaluation harness score
+the engine against fixtures without standing up the app — and it is why the decision layer could
+live somewhere other than this UI.
+
+## Running it
+
+Requires Node 20+.
+
+```bash
+npm install
+cp .dev.vars.example .dev.vars    # then set NEBIUS_API_KEY
+npm run dev                       # http://localhost:8080
+```
+
+`.dev.vars` is gitignored. Without a key the app still runs — the engine degrades to agreeing
+with you rather than failing.
+
+> **Note:** `.dev.vars` is a Wrangler file, and `npm run dev` is a plain Node Vite server with no
+> Workers runtime, so it does not read that file on its own. A dev-only Vite plugin in
+> `vite.config.ts` loads it into `process.env`. It deliberately does not go through `define` or
+> `import.meta.env`, either of which would inline the secret into the client bundle.
+
+### Against the real Workers runtime
+
+`npm run dev` has no D1 binding and no Workers `env` — state falls back to an in-memory store. To
+exercise the real thing locally (no Cloudflare account needed, Miniflare simulates D1):
+
+```bash
+npm run build
+npm run db:migrate      # applies migrations to the local D1
+npx wrangler dev --local
+```
+
+The `db:*` scripts all pass `--config wrangler.jsonc` deliberately: after a build, wrangler
+otherwise follows `.wrangler/deploy/config.json` to the generated config and silently applies no
+migrations at all.
+
+### Deploying
+
+See **[docs/deploy.md](docs/deploy.md)**.
+
+## How it is built
+
+TanStack Start + React 19 + Vite 7 + Tailwind 4, deployed to Cloudflare Workers via Nitro.
+Per-visitor state persists in D1, keyed by an opaque `HttpOnly` cookie — **no login**, because a
+judge should be able to open the URL and use it. Refresh and your data is there; a private window
+gets a fresh seeded app.
+
+| path                     | what it is                                                   |
+| ------------------------ | ------------------------------------------------------------ |
+| `src/engine/`            | the verdict engine — standalone, no app imports              |
+| `src/lib/bucket/`        | store: pure reducer, provider, persistence, server functions |
+| `src/lib/server/`        | session cookie, D1 store, spend ledger and budget guard      |
+| `src/components/bucket/` | the product surfaces, including the retraction moment        |
+| `migrations/`            | D1 schema                                                    |
+| `docs/`                  | Token Factory findings, deploy runbook                       |
+
+**Spend is capped.** The demo URL has no login, so anyone can trigger paid inference. A ledger in
+D1 records every call with its tokens and cost, and a guard enforces a global ceiling plus
+per-session limits before any paid call. See [`src/lib/server/budget.ts`](src/lib/server/budget.ts).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
