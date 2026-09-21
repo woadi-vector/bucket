@@ -33,18 +33,26 @@ export type {
 } from "./types";
 export { VerdictParseError } from "./parse";
 export { createStubAdapter } from "./stub-adapter";
+export {
+  createTokenFactoryAdapter,
+  TokenFactoryError,
+  TOKEN_FACTORY_BASE_URL,
+  type TokenFactoryOptions,
+} from "./token-factory-adapter";
 export { buildVerdictPrompt } from "./prompt";
 export { parseVerdict } from "./parse";
 
 /**
  * Model ids per tier.
  *
- * The plan is explicit that these must be checked against `GET /v1/models` before being
- * trusted — namespacing on Token Factory may differ. They are unverified until Phase 3.
+ * Verified against `GET /v1/models` on 2026-09-20 — see docs/token-factory-findings.md.
+ * The plan's provisional ids were wrong twice over: everything is namespaced `nvidia/`,
+ * and there is no `Llama-3_1-Nemotron-Ultra-253B-v1` on the platform at all. The actual
+ * top Nemotron is a 550B MoE, not 253B.
  */
 export const MODELS: Record<Exclude<ModelTier, "stub">, string> = {
-  nano: "NVIDIA-Nemotron-3-Nano-30B-A3B",
-  ultra: "Llama-3_1-Nemotron-Ultra-253B-v1",
+  nano: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  ultra: "nvidia/Nemotron-3-Ultra-550b-a55b",
 };
 
 export type EngineOptions = {

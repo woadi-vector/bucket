@@ -54,3 +54,23 @@ export function getCloudflareEnv(): CloudflareEnv | undefined {
 export function getDb(): D1Database | undefined {
   return getCloudflareEnv()?.BUCKET_DB;
 }
+
+/**
+ * A server-side secret, from whichever runtime we are in.
+ *
+ * Production: a Workers secret set with `wrangler secret put NAME`, reached through
+ * `globalThis.__env__`. Development: `process.env`, which the Vite config populates from
+ * `.dev.vars` — `npm run dev` is plain Node and does not read that file itself.
+ *
+ * Server-only. Nothing that reaches the browser may import this.
+ */
+export function getSecret(name: string): string | undefined {
+  const fromWorkers = getCloudflareEnv()?.[name];
+  if (typeof fromWorkers === "string" && fromWorkers) return fromWorkers;
+
+  if (typeof process !== "undefined" && process.env) {
+    const fromNode = process.env[name];
+    if (typeof fromNode === "string" && fromNode) return fromNode;
+  }
+  return undefined;
+}

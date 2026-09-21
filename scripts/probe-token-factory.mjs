@@ -171,7 +171,8 @@ async function chatProbe(label, body, file) {
     console.log(`  completion details:   ${JSON.stringify(usage.completion_tokens_details)}`);
   }
   if (content) console.log(`\n  --- content ---\n${content.slice(0, 500)}`);
-  if (reasoning) console.log(`\n  --- reasoning_content (first 500) ---\n${reasoning.slice(0, 500)}`);
+  if (reasoning)
+    console.log(`\n  --- reasoning_content (first 500) ---\n${reasoning.slice(0, 500)}`);
 
   return { content, reasoning, usage, finish: res.json?.choices?.[0]?.finish_reason };
 }
@@ -239,7 +240,11 @@ console.log(`status ${tools.status} in ${tools.ms}ms`);
 if (tools.ok) {
   save("06-tools.json", tools.json);
   const tc = tools.json?.choices?.[0]?.message?.tool_calls;
-  console.log(tc ? `  tool_calls returned: ${JSON.stringify(tc).slice(0, 300)}` : "  NO tool_calls in response");
+  console.log(
+    tc
+      ? `  tool_calls returned: ${JSON.stringify(tc).slice(0, 300)}`
+      : "  NO tool_calls in response",
+  );
   findings.toolCalls = tc ? "supported" : "accepted but no tool_calls returned";
 } else {
   save("06-tools-error.txt", scrub(tools.text));
@@ -252,13 +257,23 @@ if (tools.ok) {
 rule("FINDINGS");
 
 const verdictOn = (p) =>
-  !p ? "call failed" : p.content ? "content populated" : p.reasoning ? "EMPTY content, answer in reasoning_content" : "both empty";
+  !p
+    ? "call failed"
+    : p.content
+      ? "content populated"
+      : p.reasoning
+        ? "EMPTY content, answer in reasoning_content"
+        : "both empty";
 
 findings.reasoningContentQuirk = verdictOn(generous);
 findings.tightBudget = tight
   ? `finish_reason=${tight.finish}, content ${tight.content ? "present" : "EMPTY"}`
   : "call failed";
-findings.jsonMode = jsonMode ? (jsonMode.content ? "honoured" : "content still empty") : "call failed";
+findings.jsonMode = jsonMode
+  ? jsonMode.content
+    ? "honoured"
+    : "content still empty"
+  : "call failed";
 findings.ultraLatencyMs = ultra ? "see 05-ultra.json" : "call failed";
 
 for (const [k, v] of Object.entries(findings)) {
