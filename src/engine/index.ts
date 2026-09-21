@@ -17,7 +17,7 @@ import type { ModelAdapter } from "./adapter";
 import { buildVerdictPrompt } from "./prompt";
 import { parseVerdict, VerdictParseError } from "./parse";
 import { createStubAdapter } from "./stub-adapter";
-import type { ModelTier, Verdict, VerdictRequest } from "./types";
+import type { ModelTier, Verdict, VerdictRequest, VerdictTelemetry } from "./types";
 
 export type { ModelAdapter, ChatMessage, CompletionRequest, CompletionResponse } from "./adapter";
 export type {
@@ -55,6 +55,11 @@ export const MODELS: Record<Exclude<ModelTier, "stub">, string> = {
   ultra: "nvidia/Nemotron-3-Ultra-550b-a55b",
 };
 
+export type UsageEvent = {
+  telemetry: VerdictTelemetry;
+  agrees: boolean;
+};
+
 export type EngineOptions = {
   /**
    * Transport. Defaults to the stub.
@@ -63,8 +68,21 @@ export type EngineOptions = {
    * choose the model. Tier selection stays inside the engine.
    */
   adapter?: ModelAdapter;
-  /** Escalate to the expensive tier when the cheap one contests the user's tag. */
-  allowEscalation?: boolean;
+  /**
+   * Asked only when the cheap tier contests the user's tag, to decide whether the
+   * expensive one may weigh in.
+   *
+   * It is a callback rather than a boolean because the answer depends on a spend ledger
+   * the engine deliberately cannot see. The engine owns *when* escalation is warranted;
+   * the caller owns whether it can be afforded. Omitted means never escalate.
+   */
+  canEscalate?: () => boolean | Promise<boolean>;
+  /**
+   * Called once per model call, including the cheap screening pass that preceded an
+   * escalation. This is how the split and the per-tier token cost get logged without the
+   * engine knowing anything about storage.
+   */
+  onUsage?: (event: UsageEvent) => void | Promise<void>;
   signal?: AbortSignal;
   /** Injectable clock, so history phrasing is deterministic under test. */
   now?: number;
@@ -84,16 +102,56 @@ export async function judgeTransaction(
   options: EngineOptions = {},
 ): Promise<Verdict> {
   const adapter = options.adapter ?? createStubAdapter();
-  const tier: ModelTier = adapter.name === "stub" ? "stub" : "nano";
-  const model = tier === "stub" ? "stub" : MODELS.nano;
+  const screeningTier: ModelTier = adapter.name === "stub" ? "stub" : "nano";
+
+  const screening = await runTier(request, options, adapter, screeningTier);
+  await options.onUsage?.({ telemetry: screening.telemetry!, agrees: screening.agrees });
+
+  // The cheap pass agreed with the user, so there is no argument to adjudicate and the
+  // expensive tier is never touched. This is the whole efficiency claim.
+  if (screening.agrees || screening.telemetry?.degraded || screeningTier === "stub") {
+    return screening;
+  }
+
+  if (!options.canEscalate || !(await options.canEscalate())) {
+    return screening;
+  }
+
+  /**
+   * Adjudication.
+   *
+   * Ultra is asked the *same* question, not "a smaller model disagreed, what do you
+   * think?". Telling it the cheap tier already objected invites it to agree out of
+   * deference, and it would make scoring the two tiers against the evaluation set
+   * meaningless because they would no longer be answering the same question.
+   */
+  const adjudication = await runTier(request, options, adapter, "ultra");
+  await options.onUsage?.({ telemetry: adjudication.telemetry!, agrees: adjudication.agrees });
+
+  if (adjudication.telemetry?.degraded) return screening;
+
+  return {
+    ...adjudication,
+    telemetry: { ...adjudication.telemetry!, escalatedFrom: screeningTier },
+  };
+}
+
+/** One model call, parsed. Degrades rather than throwing. */
+async function runTier(
+  request: VerdictRequest,
+  options: EngineOptions,
+  adapter: ModelAdapter,
+  tier: ModelTier,
+): Promise<Verdict> {
+  const model = tier === "stub" ? "stub" : MODELS[tier];
   const startedAt = Date.now();
 
   try {
     const response = await adapter.complete({
       model,
       messages: buildVerdictPrompt(request, options.now),
-      // Reasoning models spend the budget on the trace before emitting an answer, so this
-      // is generous on purpose. Phase 3 should tune it against real usage numbers.
+      // Reasoning models spend the budget on the trace before emitting an answer. A tight
+      // budget returns HTTP 200 with empty content — measured, see the findings doc.
       maxTokens: MAX_TOKENS,
       temperature: 0.2,
       responseFormat: "json_object",
@@ -114,7 +172,7 @@ export async function judgeTransaction(
     };
   } catch (error) {
     if (!(error instanceof VerdictParseError)) {
-      console.error("[engine] verdict request failed", error);
+      console.error(`[engine] ${tier} verdict request failed`, error);
     }
     return degradedVerdict(request, adapter.name, tier, model, Date.now() - startedAt);
   }

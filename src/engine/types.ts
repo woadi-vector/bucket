@@ -63,6 +63,8 @@ export type VerdictTelemetry = {
   usage?: TokenUsage;
   /** True when the verdict came from a fallback rather than a model answer. */
   degraded?: boolean;
+  /** Set on an adjudication: the tier whose disagreement triggered the escalation. */
+  escalatedFrom?: ModelTier;
 };
 
 /**

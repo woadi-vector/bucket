@@ -82,15 +82,21 @@ export const requestVerdict = createServerFn({ method: "POST" })
 
     const verdict = await judgeTransaction(data, {
       adapter: createTokenFactoryAdapter({ apiKey }),
-    });
 
-    if (verdict.telemetry) {
-      await recordUsage({
-        sessionId,
-        telemetry: verdict.telemetry,
-        agreed: verdict.agrees,
-      });
-    }
+      // The engine decides escalation is *warranted*; we decide it is affordable. It only
+      // asks when the cheap tier has contested the user's tag.
+      canEscalate: async () => {
+        const escalation = await checkBudget(sessionId, "ultra");
+        if (!escalation.allowed) {
+          console.warn(`[verdict] escalation declined: ${escalation.reason}`);
+        }
+        return escalation.allowed;
+      },
+
+      // Fires once per model call, so an escalated verdict writes two rows and the ledger
+      // shows the split rather than only the tier that had the last word.
+      onUsage: ({ telemetry, agrees }) => recordUsage({ sessionId, telemetry, agreed: agrees }),
+    });
 
     // Telemetry names the model and its token cost. It stays server-side, in model_usage —
     // the browser gets the four contract fields and no clue which model answered.

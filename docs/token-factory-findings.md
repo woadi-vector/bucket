@@ -187,3 +187,27 @@ than a hackathon demo will ever use. The cap exists to bound a runaway loop or a
 hammering an endpoint that has no login, not to ration a budget that was never going to run
 out. Cost estimates use deliberately conservative price constants (see
 `src/lib/server/budget.ts`), so the true number is likely higher still.
+
+### What escalation costs
+
+One contested purchase, both tiers, from the ledger:
+
+| tier  | prompt | completion | cost    | latency | agreed with user |
+| ----- | ------ | ---------- | ------- | ------- | ---------------- |
+| nano  | 363    | 269        | 64 µ$   | 2160 ms | no — contested   |
+| ultra | 363    | 425        | 1576 µ$ | 2528 ms | no — upheld      |
+
+**Ultra costs 24.6x a Nano call while using only 1.25x the tokens.** This is the number behind
+the tiering claim, and it is worth stating precisely: screening with Nano and escalating only
+contested tags is cheap because of _price per token_, not because the cheap tier does less
+work. Nano's 269 completion tokens are not far off Ultra's 425.
+
+### Latency variance is worse than the means suggest
+
+Across all real calls made while building this, Nano ranged **1964–7026 ms** and Ultra
+**2305–4274 ms**. In one escalation Ultra (2528 ms) was _faster_ than a Nano call in the same
+session (7026 ms).
+
+Tier does not reliably predict latency; variance dominates. That is the strongest argument
+for the async design — not "the big model is slow", but "neither model has a latency you can
+design a half-second interaction around."
