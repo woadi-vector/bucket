@@ -1,4 +1,13 @@
-import { createContext, useContext, useMemo, useReducer, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import {
   DEFAULT_BUCKET_ACCENT,
@@ -11,6 +20,10 @@ import {
 import { useBucketSounds } from "@/lib/use-bucket-sounds";
 import { useEvent } from "@/lib/use-event";
 import { bucketReducer, createInitialState, type BucketState } from "./reducer";
+import { saveBucketState } from "./server-fns";
+
+/** How long to wait after the last change before persisting. */
+const SAVE_DEBOUNCE_MS = 800;
 
 export type Tab = "buckets" | "pending" | "family";
 
@@ -97,9 +110,37 @@ const INITIAL_UI: UiState = {
   flying: null,
 };
 
-export function BucketProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(bucketReducer, undefined, createInitialState);
+export function BucketProvider({
+  children,
+  initialState,
+}: {
+  children: ReactNode;
+  /** Server-loaded state. Present from the first render, so the hero number never animates on load. */
+  initialState?: BucketState;
+}) {
+  const [state, dispatch] = useReducer(
+    bucketReducer,
+    initialState,
+    (s) => s ?? createInitialState(),
+  );
   const [ui, setUi] = useState<UiState>(INITIAL_UI);
+
+  // Persist after the state settles. The first run is skipped: it would just write back
+  // what the loader handed us.
+  const skipNextSave = useRef(true);
+  useEffect(() => {
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void saveBucketState({ data: state }).catch((error) => {
+        // A failed save must never interrupt the person using the app.
+        console.error("[bucket] could not persist state", error);
+      });
+    }, SAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [state]);
 
   const patchUi = useEvent((patch: Partial<UiState>) => setUi((prev) => ({ ...prev, ...patch })));
   const { playNeed, playWant, playLetGo } = useBucketSounds(ui.muted);

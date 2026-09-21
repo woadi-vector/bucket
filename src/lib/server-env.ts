@@ -1,0 +1,56 @@
+/**
+ * Access to the Cloudflare Workers `env` (bindings + secrets) from server code.
+ *
+ * `src/server.ts` is the Workers entry and is the only place that receives `env`, so it
+ * hands it here on every request. Storing it at module scope is safe: `env` is the same
+ * object for every request in an isolate.
+ *
+ * In `npm run dev` there is no Workers runtime, so this is undefined. Callers must handle
+ * that rather than assume a binding exists.
+ */
+
+export type CloudflareEnv = {
+  BUCKET_DB?: D1Database;
+  NEBIUS_API_KEY?: string;
+  [key: string]: unknown;
+};
+
+/** Minimal shape of the D1 binding — avoids depending on @cloudflare/workers-types. */
+export interface D1Database {
+  prepare(query: string): D1PreparedStatement;
+  batch(statements: D1PreparedStatement[]): Promise<unknown[]>;
+  exec(query: string): Promise<unknown>;
+}
+
+export interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  first<T = unknown>(colName?: string): Promise<T | null>;
+  run(): Promise<{ success: boolean }>;
+  all<T = unknown>(): Promise<{ results: T[] }>;
+}
+
+let cloudflareEnv: CloudflareEnv | undefined;
+
+export function setCloudflareEnv(env: unknown): void {
+  if (env && typeof env === "object") {
+    cloudflareEnv = env as CloudflareEnv;
+  }
+}
+
+/**
+ * Nitro's cloudflare-module preset wraps our entry and does not forward `(request, env, ctx)`
+ * to it, so the env captured in src/server.ts stays empty in production — verified by
+ * probing a real build. The generated entry does assign `globalThis.__env__ = env` on every
+ * request, so that is the binding source that actually works. The captured value is kept as
+ * a fallback in case the entry wiring changes.
+ */
+export function getCloudflareEnv(): CloudflareEnv | undefined {
+  const fromNitro = (globalThis as { __env__?: CloudflareEnv }).__env__;
+  if (fromNitro && typeof fromNitro === "object") return fromNitro;
+  return cloudflareEnv;
+}
+
+/** The D1 binding, or undefined when running outside the Workers runtime. */
+export function getDb(): D1Database | undefined {
+  return getCloudflareEnv()?.BUCKET_DB;
+}

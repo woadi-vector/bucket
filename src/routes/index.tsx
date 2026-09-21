@@ -29,8 +29,11 @@ import { parseReceipt } from "@/lib/receipt-ocr";
 import { DemoOverlay } from "@/components/bucket/DemoOverlay";
 import { BucketProvider, useBucketActions, useBucketState } from "@/lib/bucket/provider";
 import { useDemo } from "@/lib/bucket/use-demo";
+import { loadBucketState } from "@/lib/bucket/server-fns";
 
 export const Route = createFileRoute("/")({
+  // Runs on the server for a cold load, so the page arrives already populated.
+  loader: () => loadBucketState(),
   head: () => ({
     meta: [
       { title: "Bucket — Decide before you spend" },
@@ -45,8 +48,9 @@ export const Route = createFileRoute("/")({
 });
 
 function IndexRoute() {
+  const loaded = Route.useLoaderData();
   return (
-    <BucketProvider>
+    <BucketProvider initialState={loaded}>
       <Index />
     </BucketProvider>
   );

@@ -3,5 +3,20 @@
   "name": "tanstack-start-app",
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
+  // Nitro overrides `main` with its own bundle at build time and warns about it.
+  // It is kept because `wrangler dev` against the source still reads it.
   "main": "src/server.ts",
+
+  // Phase 2 persistence. `database_id` is a placeholder until someone with the Cloudflare
+  // account runs:  npx wrangler d1 create bucket-db
+  // and pastes the returned uuid here. Local development does not need it -- wrangler's
+  // --local mode simulates D1 with no account and ignores this value.
+  "d1_databases": [
+    {
+      "binding": "BUCKET_DB",
+      "database_name": "bucket-db",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations",
+    },
+  ],
 }

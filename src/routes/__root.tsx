@@ -12,10 +12,6 @@ import {
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 
-const BUCKET_TITLE = "Bucket — Decide before you spend";
-const BUCKET_DESCRIPTION =
-  "A calm budgeting app that pauses you before each purchase to decide want vs. need and pick a bucket.";
-
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -80,15 +76,30 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: BUCKET_TITLE },
-      { name: "description", content: BUCKET_DESCRIPTION },
+      // Inlined rather than pulled from module consts: the router plugin extracts `head`
+      // into its own chunk, where module scope is not available (it throws
+      // "BUCKET_TITLE is not defined" at runtime).
+      { title: "Bucket — Decide before you spend" },
+      {
+        name: "description",
+        content:
+          "A calm budgeting app that pauses you before each purchase to decide want vs. need and pick a bucket.",
+      },
       { name: "author", content: "Jason Wold" },
-      { property: "og:title", content: BUCKET_TITLE },
-      { property: "og:description", content: BUCKET_DESCRIPTION },
+      { property: "og:title", content: "Bucket — Decide before you spend" },
+      {
+        property: "og:description",
+        content:
+          "A calm budgeting app that pauses you before each purchase to decide want vs. need and pick a bucket.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: BUCKET_TITLE },
-      { name: "twitter:description", content: BUCKET_DESCRIPTION },
+      { name: "twitter:title", content: "Bucket — Decide before you spend" },
+      {
+        name: "twitter:description",
+        content:
+          "A calm budgeting app that pauses you before each purchase to decide want vs. need and pick a bucket.",
+      },
       // og:image / twitter:image intentionally absent: the export pointed them at a
       // Lovable preview on a third-party R2 bucket we do not control. Add a real card
       // image before submission rather than restoring that URL.
