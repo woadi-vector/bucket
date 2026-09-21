@@ -36,5 +36,39 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    // The verdict engine is a standalone module (plan section 4b): Bucket's UI is one
+    // consumer of it, not the only place it can live. The evaluation harness has to be
+    // able to score it with the rest of the app deleted, so the boundary is enforced here
+    // rather than left as a one-off review check.
+    files: ["src/engine/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "react",
+                "react-dom",
+                "react/*",
+                "**/components/**",
+                "**/routes/**",
+                "@/components/*",
+                "@/routes/*",
+                "@/lib/*",
+                "@/hooks/*",
+                "lucide-react",
+                "framer-motion",
+                "sonner",
+              ],
+              message:
+                "src/engine must not depend on the app or on React. Its input is plain data passed in by the caller — if it needs a UI type, the boundary is wrong (plan section 4b).",
+            },
+          ],
+        },
+      ],
+    },
+  },
   eslintPluginPrettier,
 );
