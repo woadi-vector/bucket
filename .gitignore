@@ -21,10 +21,14 @@ dist-ssr
 .env.*
 !.env.example
 
+# Raw API probe dumps (scripts/probe-token-factory.mjs)
+probe-output/
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
 .dev.vars.*
+!.dev.vars.example
 
 # Editor directories and files
 .vscode/*

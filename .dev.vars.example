@@ -1,0 +1,14 @@
+# Copy this file to `.dev.vars` and fill in the real value.
+#
+#   Copy-Item .dev.vars.example .dev.vars
+#
+# `.dev.vars` is gitignored and must never be committed. In production the key is set with:
+#
+#   npx wrangler secret put NEBIUS_API_KEY
+#
+# Note: `.dev.vars` is a wrangler file. `npm run dev` runs a plain Node Vite server with no
+# Workers runtime, so it does NOT read this file — see src/lib/server-env.ts. Scripts and the
+# dev server read the key from the environment instead; the probe script parses this file
+# directly as a convenience.
+
+NEBIUS_API_KEY=
