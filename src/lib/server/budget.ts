@@ -71,27 +71,34 @@ function devCounters(): DevCounters {
 /**
  * Global ceiling defaults, used when the Wrangler vars are unset or unreadable.
  *
- * Sized against the real numbers: a verdict is ~650–950 tokens across both tiers. 5M tokens
- * is at most ~$10 even if every token were billed at the conservative Ultra price above, and
- * well under that in practice since most verdicts never escalate.
+ * Sized against the real numbers: a verdict is ~650–950 tokens across both tiers and costs
+ * 64–73 µ$ at Nano, ~1600 µ$ when it escalates.
+ *
+ * Note how the defaults interact: every token is priced at no more than the conservative
+ * Ultra rate ($2/M), so 5M tokens can never cost more than $10. With these defaults the token
+ * limit therefore trips before the $15 limit can — the USD limit only becomes the binding one
+ * if `GLOBAL_TOKEN_LIMIT` is raised. It is still worth having: it is the one limit expressed in
+ * the unit the credits are actually denominated in.
  */
 export const GLOBAL_LIMIT_DEFAULTS = {
   verdicts: 5_000,
   tokens: 5_000_000,
+  usd: 15,
 } as const;
 
-export type GlobalLimits = { verdicts: number; tokens: number };
+export type GlobalLimits = { verdicts: number; tokens: number; usd: number };
 
 /**
- * Reads `GLOBAL_VERDICT_LIMIT` and `GLOBAL_TOKEN_LIMIT` from Wrangler `vars` (or
- * `.dev.vars` in development).
+ * Reads `GLOBAL_VERDICT_LIMIT`, `GLOBAL_TOKEN_LIMIT` and `GLOBAL_USD_LIMIT` from Wrangler `vars`
+ * (or `.dev.vars` in development).
  *
  * `0` is honoured and means "never call the model" — a deliberate kill switch. Anything that
  * is not a non-negative number falls back to the default with a warning, rather than being
- * read as 0 and silently switching the model off.
+ * read as 0 and silently switching the model off. Counts are floored; dollars keep their
+ * cents, so `GLOBAL_USD_LIMIT=0.50` means fifty cents.
  */
 export function getGlobalLimits(): GlobalLimits {
-  const read = (name: string, fallback: number): number => {
+  const read = (name: string, fallback: number, whole: boolean): number => {
     const raw = getEnvVar(name);
     if (raw === undefined) return fallback;
     const n = Number(raw.trim());
@@ -99,62 +106,87 @@ export function getGlobalLimits(): GlobalLimits {
       console.warn(`[budget] ${name}="${raw}" is not a non-negative number; using ${fallback}`);
       return fallback;
     }
-    return Math.floor(n);
+    return whole ? Math.floor(n) : n;
   };
   return {
-    verdicts: read("GLOBAL_VERDICT_LIMIT", GLOBAL_LIMIT_DEFAULTS.verdicts),
-    tokens: read("GLOBAL_TOKEN_LIMIT", GLOBAL_LIMIT_DEFAULTS.tokens),
+    verdicts: read("GLOBAL_VERDICT_LIMIT", GLOBAL_LIMIT_DEFAULTS.verdicts, true),
+    tokens: read("GLOBAL_TOKEN_LIMIT", GLOBAL_LIMIT_DEFAULTS.tokens, true),
+    usd: read("GLOBAL_USD_LIMIT", GLOBAL_LIMIT_DEFAULTS.usd, false),
   };
 }
 
-/** Every session's usage combined. Verdicts count screening calls; tokens count every tier. */
-async function readGlobalUsage(): Promise<{ verdicts: number; tokens: number }> {
+type GlobalUsage = { verdicts: number; tokens: number; costMicros: number };
+
+/**
+ * Every session's usage combined. Verdicts count screening calls; tokens and cost count every
+ * tier. Cost is the ledger's own estimate (see {@link PRICE_USD_PER_MTOK}), not Nebius billing.
+ */
+async function readGlobalUsage(): Promise<GlobalUsage> {
   const db = getDb();
   if (!db) {
     const c = devCounters();
-    return { verdicts: c.verdicts, tokens: c.totalTokens };
+    return { verdicts: c.verdicts, tokens: c.totalTokens, costMicros: c.totalMicros };
   }
   const row = await db
     .prepare(
       `SELECT COALESCE(SUM(CASE WHEN tier = 'nano' THEN 1 ELSE 0 END), 0) AS verdicts,
-              COALESCE(SUM(total_tokens), 0)                          AS tokens
+              COALESCE(SUM(total_tokens), 0)                          AS tokens,
+              COALESCE(SUM(cost_micros), 0)                           AS costMicros
          FROM model_usage`,
     )
-    .first<{ verdicts: number; tokens: number }>();
-  return { verdicts: row?.verdicts ?? 0, tokens: row?.tokens ?? 0 };
+    .first<{ verdicts: number; tokens: number; costMicros: number }>();
+  if (!row) throw new Error("model_usage aggregate returned no row");
+  return { verdicts: row.verdicts, tokens: row.tokens, costMicros: row.costMicros };
 }
+
+const formatUsd = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
 
 /**
  * The global spend ceiling, across all sessions.
  *
  * Handed to the engine as its `checkCeiling` hook and asked before every Token Factory call.
- * Logs each time it holds a call back, with the totals that tripped it, so the moment the
- * shared budget runs out shows up in `wrangler tail` rather than being inferred later from a
- * run of cached verdicts.
+ * Trips when *any* of the three limits is reached, and logs each time it holds a call back,
+ * with the totals that tripped it.
  *
- * Fails open on a ledger read error, like the per-session guard: a broken table should not
- * take the demo offline.
+ * Fails **closed**. If the ledger cannot be read, the ceiling reports itself reached and the
+ * engine serves a cached verdict rather than calling the model. That costs the demo nothing —
+ * the cached path already keeps the app fully usable — and it means a broken ledger can never
+ * turn into unmetered spend. It logs distinctly from a normal trip, because "the budget is used
+ * up" and "we cannot tell how much budget is left" call for different responses.
+ *
+ * This is deliberately the opposite of the per-session guard, which still fails open: that one
+ * rations a single visitor, while this one is the last thing standing between a login-free URL
+ * and the credits.
  */
 export async function checkGlobalCeiling(): Promise<CeilingStatus> {
   const limits = getGlobalLimits();
-  try {
-    const usage = await readGlobalUsage();
-    const overVerdicts = usage.verdicts >= limits.verdicts;
-    const overTokens = usage.tokens >= limits.tokens;
-    if (!overVerdicts && !overTokens) return { reached: false };
 
-    const reason = [
-      overVerdicts ? `verdicts ${usage.verdicts}/${limits.verdicts}` : null,
-      overTokens ? `tokens ${usage.tokens}/${limits.tokens}` : null,
-    ]
-      .filter(Boolean)
-      .join(", ");
-    console.warn(`[budget] GLOBAL CEILING TRIPPED — serving cached verdict (${reason})`);
-    return { reached: true, reason };
+  let usage: GlobalUsage;
+  try {
+    usage = await readGlobalUsage();
   } catch (error) {
-    console.error("[budget] global usage read failed; allowing the call", error);
-    return { reached: false };
+    console.error(
+      "[budget] GLOBAL CEILING FAIL-CLOSED — ledger unreadable, serving cached verdict instead of calling the model",
+      error,
+    );
+    return { reached: true, reason: "ledger unreadable (fail-closed)" };
   }
+
+  const spentUsd = usage.costMicros / USD_TO_MICROS;
+  const overVerdicts = usage.verdicts >= limits.verdicts;
+  const overTokens = usage.tokens >= limits.tokens;
+  const overUsd = spentUsd >= limits.usd;
+  if (!overVerdicts && !overTokens && !overUsd) return { reached: false };
+
+  const reason = [
+    overVerdicts ? `verdicts ${usage.verdicts}/${limits.verdicts}` : null,
+    overTokens ? `tokens ${usage.tokens}/${limits.tokens}` : null,
+    overUsd ? `usd ${formatUsd(spentUsd)}/${formatUsd(limits.usd)}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  console.warn(`[budget] GLOBAL CEILING TRIPPED — serving cached verdict (${reason})`);
+  return { reached: true, reason };
 }
 
 /**
@@ -199,7 +231,10 @@ export async function checkBudget(sessionId: string, tier: ModelTier): Promise<B
     }
     return { allowed: true };
   } catch (error) {
-    console.error("[budget] ledger read failed; allowing the call", error);
+    console.error(
+      "[budget] per-session ledger read failed; session limits not enforced for this call (the global ceiling still applies)",
+      error,
+    );
     return { allowed: true };
   }
 }

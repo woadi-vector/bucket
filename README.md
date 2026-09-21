@@ -141,11 +141,13 @@ gets a fresh seeded app.
 
 **Spend is capped.** The demo URL has no login, so anyone can trigger paid inference. A ledger in
 D1 records every call with its tokens and cost. Before each Token Factory call the engine checks a
-**global ceiling** on total verdicts and tokens across all sessions — configured as Wrangler vars
-(`GLOBAL_VERDICT_LIMIT`, `GLOBAL_TOKEN_LIMIT`), so it can be changed without a code edit. Once it
-trips, the model is no longer called and the app serves a cached verdict clearly marked as such,
-while staying fully usable. Per-session caps sit alongside it. See
-[docs/deploy.md](docs/deploy.md#budget) and [`src/lib/server/budget.ts`](src/lib/server/budget.ts).
+**global ceiling** on total verdicts, tokens and estimated dollars across all sessions — configured
+as Wrangler vars (`GLOBAL_VERDICT_LIMIT`, `GLOBAL_TOKEN_LIMIT`, `GLOBAL_USD_LIMIT`), so it can be
+changed without a code edit. Once any limit is reached, the model is no longer called and the app
+serves a cached verdict clearly marked as such, while staying fully usable. It fails closed: if the
+ledger cannot be read, it serves the cached verdict rather than risk unmetered spend. Per-session
+caps sit alongside it. See [docs/deploy.md](docs/deploy.md#budget) and
+[`src/lib/server/budget.ts`](src/lib/server/budget.ts).
 
 ## License
 

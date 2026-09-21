@@ -11,16 +11,18 @@
 	// It is kept because `wrangler dev` against the source still reads it.
 	"main": "src/server.ts",
 	// Global spend ceiling, across every session. Before each Token Factory call the engine
-	// checks total verdicts (screening calls) and total tokens in model_usage; once either
-	// reaches its limit it stops calling the model and serves a cached verdict, and the app
-	// keeps working. "0" is a kill switch that stops all model calls. The per-session caps are
-	// separate and live in src/lib/server/budget.ts.
+	// checks total verdicts (screening calls), total tokens, and total estimated cost in USD
+	// (SUM(cost_micros)) in model_usage; once ANY reaches its limit it stops calling the model
+	// and serves a cached verdict, and the app keeps working. It fails closed: if the ledger
+	// cannot be read, it serves the cached verdict too. "0" is a kill switch that stops all
+	// model calls. The per-session caps are separate and live in src/lib/server/budget.ts.
 	//
 	// Change without a code edit:  npx wrangler deploy --var GLOBAL_TOKEN_LIMIT:2000000
 	// or edit here and redeploy. Locally, .dev.vars overrides these.
 	"vars": {
 		"GLOBAL_VERDICT_LIMIT": "5000",
 		"GLOBAL_TOKEN_LIMIT": "5000000",
+		"GLOBAL_USD_LIMIT": "8",
 	},
 	// Phase 2 persistence. `database_id` is a placeholder until someone with the Cloudflare
 	// account runs:  npx wrangler d1 create bucket-db

@@ -157,14 +157,21 @@ export async function judgeTransaction(
   };
 }
 
-/** Fails open: if the caller's ceiling check itself throws, the engine carries on. */
+/**
+ * Fails closed: if the caller's ceiling check itself throws, the engine treats the ceiling as
+ * reached and spends nothing. The cached path keeps the app usable, so an unanswerable
+ * "may I spend?" costs the person nothing and cannot turn into unmetered calls.
+ */
 async function ceilingReached(options: EngineOptions): Promise<boolean> {
   if (!options.checkCeiling) return false;
   try {
     return (await options.checkCeiling()).reached;
   } catch (error) {
-    console.error("[engine] ceiling check failed; proceeding", error);
-    return false;
+    console.error(
+      "[engine] ceiling check threw; failing closed and serving a cached verdict",
+      error,
+    );
+    return true;
   }
 }
 

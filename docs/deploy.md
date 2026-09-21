@@ -168,40 +168,67 @@ node -e "const{readFileSync}=require('fs'),{execSync}=require('child_process');c
 Two independent limits, both checked before any paid call.
 
 **Global ceiling — across every session, configurable without a code change.** Before each Token
-Factory call (the screening pass and any escalation) the engine asks whether total verdicts or
-total tokens in `model_usage` have reached their limit. Once either has, it stops calling the model
-and serves a **cached verdict**: it agrees with the user, carries `cached: true`, and says in its
-reasoning that no model was consulted. The app stays fully usable — purchases log, the tray works,
-and no retraction is ever raised off a verdict nobody reasoned about.
+Factory call (the screening pass and any escalation) the engine asks whether total verdicts, total
+tokens, or total estimated cost in `model_usage` have reached their limit. Once **any** has, it
+stops calling the model and serves a **cached verdict**: it agrees with the user, carries
+`cached: true`, and says in its reasoning that no model was consulted. The app stays fully usable —
+purchases log, the tray works, and no retraction is ever raised off a verdict nobody reasoned about.
 
-| var                    | default | counts                                              |
-| ---------------------- | ------- | --------------------------------------------------- |
-| `GLOBAL_VERDICT_LIMIT` | 5000    | screening calls — one per verdict, escalated or not |
-| `GLOBAL_TOKEN_LIMIT`   | 5000000 | tokens across both tiers                            |
+| var                    | default | counts                                                  |
+| ---------------------- | ------- | ------------------------------------------------------- |
+| `GLOBAL_VERDICT_LIMIT` | 5000    | screening calls — one per verdict, escalated or not     |
+| `GLOBAL_TOKEN_LIMIT`   | 5000000 | tokens across both tiers                                |
+| `GLOBAL_USD_LIMIT`     | 15      | estimated dollars, `SUM(cost_micros)` across both tiers |
 
-5M tokens is at most ~$10 even if every token were billed at the conservative Ultra price, and far
-less in practice since most verdicts never escalate. `0` is a kill switch that stops all model
-calls. A value that is not a non-negative number is ignored with a warning and the default is used,
-rather than being read as 0 and silently switching the model off.
+The USD figure is the ledger's own estimate, priced with deliberately conservative constants in
+`src/lib/server/budget.ts` — it is not Nebius billing, and real spend should come in under it.
+
+**With the defaults, the token limit binds before the USD one.** No token is priced above the
+conservative Ultra rate of $2/M, so 5M tokens can never cost more than $10 — the $15 limit cannot be
+reached first. `GLOBAL_USD_LIMIT` becomes the binding limit only if `GLOBAL_TOKEN_LIMIT` is raised.
+It is still worth having: it is the one limit stated in the unit the credits are denominated in.
+
+**The shipped config lowers it.** `wrangler.jsonc` sets `GLOBAL_USD_LIMIT` to `8`, below the $10 the
+token limit allows, so as deployed the USD limit is the one that binds first. The table above lists
+the code defaults, which apply only when a var is unset.
+
+`0` is a kill switch that stops all model calls. Dollars keep their cents (`GLOBAL_USD_LIMIT=0.50`
+is fifty cents); the counts are whole numbers. A value that is not a non-negative number is ignored
+with a warning and the default is used, rather than being read as 0 and silently switching the
+model off.
 
 Change them without editing code:
 
 ```bash
-npx wrangler deploy --var GLOBAL_TOKEN_LIMIT:2000000
+npx wrangler deploy --var GLOBAL_USD_LIMIT:20
 ```
 
-or edit `vars` in `wrangler.jsonc` and redeploy. Every trip is logged:
+or edit `vars` in `wrangler.jsonc` and redeploy. Every trip is logged, naming each limit that was
+reached:
 
 ```bash
 npx wrangler tail | grep "GLOBAL CEILING"
-# [budget] GLOBAL CEILING TRIPPED — serving cached verdict (verdicts 5000/5000)
+# [budget] GLOBAL CEILING TRIPPED — serving cached verdict (usd $15.0021/$15.00)
 ```
 
-**Per-session caps — unchanged.** 60 verdicts and 10 escalations per visitor, in
-`BUDGET` in `src/lib/server/budget.ts`. A session over its cap gets the plain fallback (agrees, not
-marked cached), exactly as before.
+**The global ceiling fails closed.** If the ledger cannot be read, it does not guess — it serves the
+cached verdict and makes no model call. The cached path already keeps the app fully usable, so
+failing closed costs the demo nothing, and a broken ledger can never turn into unmetered spend. It
+logs at ERROR level, distinct from a normal trip, because "the budget is spent" and "we cannot tell
+how much is left" call for different responses:
 
-Both guards fail **open** on a ledger read error: a broken table should not take the demo offline.
+```
+[budget] GLOBAL CEILING FAIL-CLOSED — ledger unreadable, serving cached verdict instead of calling the model
+```
+
+If you see that line, the model is effectively switched off until the ledger is readable again —
+start with `npm run db:tables`.
+
+**Per-session caps — unchanged.** 60 verdicts and 10 escalations per visitor, in `BUDGET` in
+`src/lib/server/budget.ts`. A session over its cap gets the plain fallback (agrees, not marked
+cached), exactly as before. This guard still fails **open** on a ledger read error — deliberately
+the opposite of the global ceiling. It rations one visitor; the global ceiling is the last thing
+standing between a login-free URL and the credits, so it is the one that must not guess.
 
 To watch spend on the live site:
 

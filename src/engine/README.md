@@ -38,6 +38,7 @@ stub and the real Phase 3 model call.
 - **It spends only with permission.** An optional `checkCeiling()` hook is asked before every model
   call. The engine cannot see the spend ledger, so the caller answers; when the ceiling is reached
   the engine makes no call and returns a verdict marked `cached: true` that agrees with the user.
+  If the hook throws, the engine fails closed and does the same.
 
 `agrees` is derived by comparing the verdict to the user's own tag, never read from the model's
 response — it drives escalation, and a model asked to restate a boolean it could compute will
