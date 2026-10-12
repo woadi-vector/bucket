@@ -63,7 +63,31 @@ It should bundle with no external imports. As of Phase 1 it produces ~7 KB and p
 | `adapter.ts`      | provider seam — also documents the `reasoning_content` quirk    |
 | `prompt.ts`       | prompt construction                                             |
 | `parse.ts`        | tolerant JSON extraction from reasoning-model output            |
-| `stub-adapter.ts` | Phase 1 placeholder; always agrees, zero confidence             |
+| `stub-adapter.ts` | no-credentials fallback; agrees by default, forced by markers   |
+
+## Designing without an API key
+
+With no `NEBIUS_API_KEY` set, the app falls back to the stub adapter: it runs, it logs a warning,
+and every verdict agrees with you. That is safe but useless for designing the screens that only
+appear when Bucket disagrees.
+
+Put a marker in a purchase's **label or note** to force the stub's answer:
+
+| marker  | effect                                 |
+| ------- | -------------------------------------- |
+| `#want` | the stub answers "want"                |
+| `#need` | the stub answers "need"                |
+| `#low`  | with a forced verdict, confidence 0.25 |
+| `#high` | with a forced verdict, confidence 0.95 |
+
+Tag a purchase `need` and label it `Headphones #want` and the stub contests your tag, which raises
+the retraction surface. Add `#low` for the hedged version. Without a marker the stub behaves exactly
+as before.
+
+These are a development affordance, not a feature. They cost nothing, they do nothing once a real
+adapter is configured, and a forced disagreement never escalates, because `judgeTransaction`
+short-circuits when the screening tier is `stub`. The reasoning text on a forced verdict begins
+`STUB SCENARIO` and names the marker, so it cannot be mistaken for a real model answer on screen.
 
 ## Status
 

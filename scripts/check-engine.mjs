@@ -135,7 +135,57 @@ const check = (name, cond, detail = "") => {
   check("no hook: unchanged behaviour", calls.length === 1);
 }
 
-// 6. The guard itself: nothing above touched the network.
+// 6. Stub scenario markers: forced disagreement for design work, default unchanged.
+{
+  const base = { amount: 260, intent: "need", readinessTag: "impulse" };
+
+  const plain = await judgeTransaction({ purchase: { ...base, label: "Headphones" }, history: [] });
+  check("stub default: still agrees", plain.agrees === true && plain.verdict === "need");
+  check("stub default: zero confidence", plain.confidence === 0, `conf=${plain.confidence}`);
+
+  const forced = await judgeTransaction({
+    purchase: { ...base, label: "Headphones #want" },
+    history: [],
+  });
+  check("marker: contests the user's tag", forced.agrees === false && forced.verdict === "want");
+  check("marker: reasoning announces the stub", forced.reasoning.startsWith("STUB SCENARIO"));
+  check("marker: tier stays stub", forced.telemetry?.tier === "stub");
+
+  const hedged = await judgeTransaction({
+    purchase: { ...base, label: "Headphones #want #low", note: null },
+    history: [],
+  });
+  check("marker: #low lowers confidence", hedged.confidence === 0.25, `conf=${hedged.confidence}`);
+
+  // A forced disagreement must never reach the expensive tier, even with escalation allowed.
+  // onUsage fires once per model call, so counting it is what actually proves no second pass.
+  {
+    const tiers = [];
+    let escalationAsked = 0;
+    const v = await judgeTransaction(
+      { purchase: { ...base, label: "Headphones #want" }, history: [] },
+      {
+        canEscalate: () => {
+          escalationAsked++;
+          return true;
+        },
+        onUsage: (e) => tiers.push(e.telemetry.tier),
+      },
+    );
+    check("marker: exactly one pass", tiers.length === 1, tiers.join(" -> "));
+    check("marker: never asked to escalate", escalationAsked === 0, `asked=${escalationAsked}`);
+    check("marker: no adjudication recorded", v.telemetry?.escalatedFrom === undefined);
+  }
+
+  // The marker only works where a person actually typed it.
+  const inNote = await judgeTransaction({
+    purchase: { ...base, label: "Headphones", note: "work calls #want" },
+    history: [],
+  });
+  check("marker: honoured in the note too", inNote.agrees === false);
+}
+
+// 7. The guard itself: nothing above touched the network.
 check("no network calls attempted", fetchAttempts === 0, `fetch=${fetchAttempts}`);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

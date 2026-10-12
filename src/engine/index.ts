@@ -33,7 +33,7 @@ export type {
   CeilingStatus,
 } from "./types";
 export { VerdictParseError } from "./parse";
-export { createStubAdapter } from "./stub-adapter";
+export { createStubAdapter, STUB_MARKERS } from "./stub-adapter";
 export {
   createTokenFactoryAdapter,
   TokenFactoryError,
