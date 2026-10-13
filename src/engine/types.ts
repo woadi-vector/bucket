@@ -40,6 +40,22 @@ export type VerdictRequest = {
   history: HistoricalPurchase[];
 };
 
+/**
+ * A contested purchase, sent back with what the person said in their defence.
+ *
+ * Bucket asks before it reclassifies. The person is the only party who knows why they are
+ * buying something, and a system that overrules without asking is both ruder and more often
+ * wrong. This is the second half of that exchange.
+ */
+export type ReconsiderRequest = VerdictRequest & {
+  /** The question Bucket asked. Carried so the model can see what was actually asked. */
+  question: string;
+  /** What the person said back, verbatim. */
+  explanation: string;
+  /** The verdict being reconsidered — the one the explanation is answering. */
+  priorVerdict: Intent;
+};
+
 export type ModelTier = "nano" | "ultra" | "stub";
 
 export type TokenUsage = {
@@ -65,6 +81,8 @@ export type VerdictTelemetry = {
   degraded?: boolean;
   /** Set on an adjudication: the tier whose disagreement triggered the escalation. */
   escalatedFrom?: ModelTier;
+  /** Which pass produced this verdict. Screening unless stated. */
+  stage?: "screening" | "adjudication" | "reconsideration";
   /** True when no model was called because the global spend ceiling had been reached. */
   cached?: boolean;
 };
@@ -94,5 +112,21 @@ export type Verdict = {
    * argument to make, so it must never be mistaken for one.
    */
   cached?: boolean;
+  /**
+   * What Bucket wants to ask before it reclassifies anything.
+   *
+   * Present only when the engine contests the user's tag and has a question worth asking.
+   * It is an invitation, never a gate: the person can ignore it and the verdict stands as
+   * advice either way.
+   */
+  question?: string;
+  /**
+   * Set only on a reconsideration: whether the explanation changed the engine's mind.
+   *
+   * Derived from the new verdict rather than reported by the model, for the same reason
+   * `agrees` is. A model asked to restate a judgement it already made will sometimes
+   * contradict itself, and this one decides what the person sees.
+   */
+  explanationAccepted?: boolean;
   telemetry?: VerdictTelemetry;
 };

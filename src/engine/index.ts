@@ -14,10 +14,17 @@
  */
 
 import type { ModelAdapter } from "./adapter";
-import { buildVerdictPrompt } from "./prompt";
+import { buildReconsiderPrompt, buildVerdictPrompt } from "./prompt";
 import { parseVerdict, VerdictParseError } from "./parse";
 import { createStubAdapter } from "./stub-adapter";
-import type { CeilingStatus, ModelTier, Verdict, VerdictRequest, VerdictTelemetry } from "./types";
+import type {
+  CeilingStatus,
+  ModelTier,
+  ReconsiderRequest,
+  Verdict,
+  VerdictRequest,
+  VerdictTelemetry,
+} from "./types";
 
 export type { ModelAdapter, ChatMessage, CompletionRequest, CompletionResponse } from "./adapter";
 export type {
@@ -26,6 +33,7 @@ export type {
   PurchaseUnderReview,
   HistoricalPurchase,
   VerdictRequest,
+  ReconsiderRequest,
   Verdict,
   VerdictTelemetry,
   ModelTier,
@@ -40,7 +48,7 @@ export {
   TOKEN_FACTORY_BASE_URL,
   type TokenFactoryOptions,
 } from "./token-factory-adapter";
-export { buildVerdictPrompt } from "./prompt";
+export { buildVerdictPrompt, buildReconsiderPrompt } from "./prompt";
 export { parseVerdict } from "./parse";
 
 /**
@@ -153,7 +161,109 @@ export async function judgeTransaction(
 
   return {
     ...adjudication,
-    telemetry: { ...adjudication.telemetry!, escalatedFrom: screeningTier },
+    telemetry: { ...adjudication.telemetry!, escalatedFrom: screeningTier, stage: "adjudication" },
+  };
+}
+
+/**
+ * The second half of the exchange: the person answered the question, and this decides whether
+ * the answer holds.
+ *
+ * Reached only after {@link judgeTransaction} contested a tag and returned a `question`, so it
+ * is never the first thing a purchase meets. The expensive tier answers, because weighing a
+ * human explanation against a person's own history is the hardest judgement the system makes
+ * and the clearest case for it. Whether that is worth its cost is a question for the
+ * evaluation set, not an assumption to keep forever.
+ *
+ * Never throws, for the same reason `judgeTransaction` does not: a provider outage must not
+ * punish someone for having explained themselves. A degraded reconsideration accepts the
+ * explanation, because Bucket advises, and silence is not an argument.
+ */
+export async function reconsiderTransaction(
+  request: ReconsiderRequest,
+  options: EngineOptions = {},
+): Promise<Verdict> {
+  const adapter = options.adapter ?? createStubAdapter();
+  const tier: ModelTier = adapter.name === "stub" ? "stub" : "ultra";
+
+  if (tier !== "stub" && (await ceilingReached(options))) {
+    return acceptedByDefault(request, adapter.name, CACHED_REASONING, true);
+  }
+
+  const startedAt = Date.now();
+  let response;
+  try {
+    response = await adapter.complete({
+      model: tier === "stub" ? "stub" : MODELS.ultra,
+      messages: buildReconsiderPrompt(request, options.now),
+      maxTokens: MAX_TOKENS,
+      signal: options.signal,
+    });
+  } catch (error) {
+    console.error("[engine] reconsideration failed; accepting the explanation", error);
+    return acceptedByDefault(request, adapter.name, DEGRADED_RECONSIDER_REASONING, false);
+  }
+
+  let parsed;
+  try {
+    parsed = parseVerdict(response.text, request.purchase.intent);
+  } catch (error) {
+    if (error instanceof VerdictParseError) {
+      console.error("[engine] reconsideration was unparseable; accepting the explanation");
+      return acceptedByDefault(request, adapter.name, DEGRADED_RECONSIDER_REASONING, false);
+    }
+    throw error;
+  }
+
+  const verdict: Verdict = {
+    ...parsed,
+    // Derived, not reported. The model is never asked whether it changed its mind.
+    explanationAccepted: parsed.agrees,
+    telemetry: {
+      tier,
+      model: tier === "stub" ? "stub" : MODELS.ultra,
+      adapter: adapter.name,
+      latencyMs: Date.now() - startedAt,
+      usage: response.usage,
+      stage: "reconsideration",
+    },
+  };
+
+  await options.onUsage?.({ telemetry: verdict.telemetry!, agrees: verdict.agrees });
+  return verdict;
+}
+
+export const DEGRADED_RECONSIDER_REASONING =
+  "Bucket could not re-read this one, so your explanation stands.";
+
+/**
+ * What a reconsideration returns when no model could answer it.
+ *
+ * It accepts. The person took the trouble to explain, and holding a verdict against them on
+ * the strength of an outage would be the system enforcing rather than advising.
+ */
+function acceptedByDefault(
+  request: ReconsiderRequest,
+  adapterName: string,
+  reasoning: string,
+  cached: boolean,
+): Verdict {
+  return {
+    agrees: true,
+    verdict: request.purchase.intent,
+    confidence: 0,
+    reasoning,
+    explanationAccepted: true,
+    ...(cached ? { cached: true } : {}),
+    telemetry: {
+      tier: "stub",
+      model: "none",
+      adapter: adapterName,
+      latencyMs: 0,
+      stage: "reconsideration",
+      degraded: !cached,
+      ...(cached ? { cached: true } : {}),
+    },
   };
 }
 
@@ -235,6 +345,7 @@ async function runTier(
         adapter: adapter.name,
         latencyMs: Date.now() - startedAt,
         usage: response.usage,
+        stage: "screening",
       },
     };
   } catch (error) {

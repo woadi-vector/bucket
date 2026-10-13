@@ -38,7 +38,9 @@ const bundled = await build({
 const dir = mkdtempSync(join(tmpdir(), "bucket-engine-"));
 const file = join(dir, "engine.mjs");
 writeFileSync(file, bundled.outputFiles[0].contents);
-const { judgeTransaction, CACHED_REASONING } = await import(pathToFileURL(file).href);
+const { judgeTransaction, reconsiderTransaction, CACHED_REASONING } = await import(
+  pathToFileURL(file).href
+);
 rmSync(dir, { recursive: true, force: true });
 
 const request = {
@@ -185,7 +187,104 @@ const check = (name, cond, detail = "") => {
   check("marker: honoured in the note too", inNote.agrees === false);
 }
 
-// 7. The guard itself: nothing above touched the network.
+// 7. Clarification: a contested tag carries a question, and the answer is weighed not waved through.
+{
+  const contested = await judgeTransaction({
+    purchase: { amount: 260, label: "Headphones #want", intent: "need", readinessTag: "impulse" },
+    history: [],
+  });
+  check("clarify: disagreement carries a question", typeof contested.question === "string");
+
+  const agreed = await judgeTransaction({
+    purchase: { amount: 40, label: "Groceries", intent: "need", readinessTag: null },
+    history: [],
+  });
+  check("clarify: agreement carries no question", agreed.question === undefined);
+
+  // A question on an agreeing verdict is dropped: nobody should defend an uncontested call.
+  const chatty = {
+    name: "fixture",
+    async complete() {
+      return {
+        text: '{"verdict":"need","confidence":0.8,"reasoning":"Fine.","question":"Why though?"}',
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const v = await judgeTransaction(request, { adapter: chatty });
+  check("clarify: question dropped when it agrees", v.agrees === true && v.question === undefined);
+}
+
+// 8. Reconsideration: holds or accepts, and says which.
+{
+  const base = {
+    purchase: { amount: 260, label: "Headphones #want", intent: "need", readinessTag: "impulse" },
+    history: [],
+    question: "What changed since the last pair?",
+    priorVerdict: "want",
+  };
+
+  const held = await reconsiderTransaction({ ...base, explanation: "I need them for work." });
+  check("reconsider: can hold its position", held.explanationAccepted === false);
+  check("reconsider: still disagrees", held.agrees === false && held.verdict === "want");
+  check("reconsider: stage recorded", held.telemetry?.stage === "reconsideration");
+
+  const moved = await reconsiderTransaction({
+    ...base,
+    explanation: "The old pair broke this morning #accept",
+  });
+  check("reconsider: can be persuaded", moved.explanationAccepted === true);
+  check("reconsider: agrees after accepting", moved.agrees === true && moved.verdict === "need");
+
+  // Acceptance is derived from the verdict, never read from the model's own claim.
+  const liar = {
+    name: "fixture",
+    async complete() {
+      return {
+        text: '{"verdict":"want","confidence":0.9,"reasoning":"Held.","explanationAccepted":true}',
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const claimed = await reconsiderTransaction({ ...base, explanation: "work" }, { adapter: liar });
+  check("reconsider: ignores a self-reported acceptance", claimed.explanationAccepted === false);
+
+  // A provider outage must not punish someone for explaining themselves.
+  const broken = {
+    name: "fixture",
+    async complete() {
+      throw new Error("provider down (expected in this check)");
+    },
+  };
+  const degraded = await reconsiderTransaction(
+    { ...base, explanation: "work" },
+    { adapter: broken },
+  );
+  check("reconsider: outage accepts the explanation", degraded.explanationAccepted === true);
+  check("reconsider: outage marked degraded", degraded.telemetry?.degraded === true);
+
+  // The ceiling still applies to the expensive pass.
+  let spent = 0;
+  const counting = {
+    name: "fixture",
+    async complete() {
+      spent++;
+      return {
+        text: '{"verdict":"want","confidence":0.9,"reasoning":"x"}',
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const ceiled = await reconsiderTransaction(
+    { ...base, explanation: "work" },
+    { adapter: counting, checkCeiling: () => ({ reached: true, reason: "budget" }) },
+  );
+  check("reconsider: ceiling blocks the call", spent === 0, `spent=${spent}`);
+  check("reconsider: ceiling accepts the explanation", ceiled.explanationAccepted === true);
+  check("reconsider: ceiling marked cached", ceiled.cached === true);
+}
+
+// 9. The guard itself: nothing above touched the network.
 check("no network calls attempted", fetchAttempts === 0, `fetch=${fetchAttempts}`);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

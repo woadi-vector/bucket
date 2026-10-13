@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-import { createTokenFactoryAdapter, judgeTransaction } from "@/engine";
-import type { Verdict, VerdictRequest } from "@/engine";
+import { createTokenFactoryAdapter, judgeTransaction, reconsiderTransaction } from "@/engine";
+import type { ReconsiderRequest, Verdict, VerdictRequest } from "@/engine";
 import { getSecret } from "@/lib/server-env";
 import { getOrCreateSessionId } from "@/lib/server/session";
 import { checkBudget, checkGlobalCeiling, recordUsage } from "@/lib/server/budget";
@@ -111,6 +111,71 @@ export const requestVerdict = createServerFn({ method: "POST" })
       reasoning: verdict.reasoning,
       // Lets the client — and anyone reading the stored state — tell a canned answer from a
       // model's. Only present when true, so ordinary verdicts are unchanged.
+      ...(verdict.cached ? { cached: true } : {}),
+    };
+  });
+
+/**
+ * Client input for the second pass. Same rules as above: it reaches a paid API, so every
+ * field is validated and every string is capped before anything is spent.
+ */
+function validateReconsiderRequest(data: unknown): ReconsiderRequest {
+  const base = validateRequest(data);
+  const { question, explanation, priorVerdict } = data as Record<string, unknown>;
+
+  if (typeof explanation !== "string" || !explanation.trim()) {
+    throw new Error("explanation is required");
+  }
+
+  return {
+    ...base,
+    question: typeof question === "string" ? question.slice(0, 500) : "",
+    explanation: explanation.slice(0, 1000),
+    priorVerdict: requireIntent(priorVerdict),
+  };
+}
+
+/**
+ * The person answered Bucket's question. This decides whether the answer holds.
+ *
+ * Reached only after a contested verdict, so it is never a purchase's first encounter with a
+ * model. The expensive tier answers, which is why the budget guard is asked for `ultra` here
+ * rather than `nano`.
+ *
+ * Every refusal path accepts the explanation rather than holding a verdict the person has
+ * already taken the trouble to answer. A guard that silently hardened into "no" would turn
+ * the question into theatre, which is the opposite of the point.
+ */
+export const requestReconsideration = createServerFn({ method: "POST" })
+  .inputValidator(validateReconsiderRequest)
+  .handler(async ({ data }): Promise<Verdict> => {
+    const apiKey = getSecret("NEBIUS_API_KEY");
+
+    if (!apiKey) {
+      console.warn("[reconsider] NEBIUS_API_KEY is not set — falling back to the stub adapter");
+      return reconsiderTransaction(data);
+    }
+
+    const sessionId = getOrCreateSessionId();
+
+    const decision = await checkBudget(sessionId, "ultra");
+    if (!decision.allowed) {
+      console.warn(`[reconsider] budget guard declined a call: ${decision.reason}`);
+      return reconsiderTransaction(data); // stub — accepts the explanation
+    }
+
+    const verdict = await reconsiderTransaction(data, {
+      adapter: createTokenFactoryAdapter({ apiKey }),
+      onUsage: ({ telemetry, agrees }) => recordUsage({ sessionId, telemetry, agreed: agrees }),
+      checkCeiling: checkGlobalCeiling,
+    });
+
+    return {
+      agrees: verdict.agrees,
+      verdict: verdict.verdict,
+      confidence: verdict.confidence,
+      reasoning: verdict.reasoning,
+      explanationAccepted: verdict.explanationAccepted,
       ...(verdict.cached ? { cached: true } : {}),
     };
   });

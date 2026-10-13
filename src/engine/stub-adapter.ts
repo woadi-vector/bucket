@@ -28,8 +28,11 @@ export const STUB_MARKERS = {
   low: "#low",
   /** With a forced verdict, report high confidence. */
   high: "#high",
+  /** In an explanation: the stub accepts it and agrees with the user's original tag. */
+  accept: "#accept",
 } as const;
 
+const ACCEPT_EXPLANATION = /#accept\b/i;
 const FORCED_VERDICT = /#(want|need)\b/i;
 const LOW_CONFIDENCE = /#low\b/i;
 const HIGH_CONFIDENCE = /#high\b/i;
@@ -68,6 +71,21 @@ export function createStubAdapter(): ModelAdapter {
       const tagged = userMessage.match(/They labelled it: (want|need)/);
       const intent: Intent = (tagged?.[1] as Intent) ?? "want";
 
+      // On a reconsideration, `#accept` in the explanation wins. Without it a marked purchase
+      // would hold its verdict forever and the accepted branch could never be designed.
+      if (ACCEPT_EXPLANATION.test(userMessage)) {
+        return {
+          text: JSON.stringify({
+            verdict: intent,
+            confidence: 0.7,
+            reasoning:
+              `STUB SCENARIO — no model was consulted. The "#accept" marker in this explanation ` +
+              `forced Bucket to accept it, so the accepted branch can be designed without an API key.`,
+          }),
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+        };
+      }
+
       const forced = userMessage.match(FORCED_VERDICT);
       if (forced) {
         const verdict = forced[1].toLowerCase() as Intent;
@@ -82,6 +100,10 @@ export function createStubAdapter(): ModelAdapter {
             verdict,
             confidence,
             reasoning: forcedReasoning(verdict, forced[0]),
+            // A forced disagreement carries a question too, so the clarification exchange can
+            // be walked end to end without credentials.
+            question:
+              "What makes this one different from the last time you bought something like it?",
           }),
           usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
         };

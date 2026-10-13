@@ -104,6 +104,36 @@ with you rather than failing.
 > `vite.config.ts` loads it into `process.env`. It deliberately does not go through `define` or
 > `import.meta.env`, either of which would inline the secret into the client bundle.
 
+### Designing without a key
+
+Without a key the engine falls back to a stub that agrees with you and reports zero confidence.
+That is deliberate — a stub that invented disagreement would be indistinguishable from a working
+model on screen — but it also means the screens that matter most are unreachable.
+
+Scenario markers are the exception. Put one in a purchase's label or note and the stub is forced:
+
+| Marker    | Effect                                                             |
+| --------- | ------------------------------------------------------------------ |
+| `#want`   | Answers "want", whatever you tagged it                             |
+| `#need`   | Answers "need", whatever you tagged it                             |
+| `#low`    | With a forced verdict, confidence 0.25                             |
+| `#high`   | With a forced verdict, confidence 0.95                             |
+| `#accept` | In an explanation: the stub accepts it and comes round to your tag |
+
+```
+Headphones #want          tagged need → contested at 0.7, with a question
+Headphones #want #low     the same, hedged
+Groceries #need #high     tagged need → agreed at 0.95
+```
+
+Then answer the question. A plain answer is held; add `#accept` and it lands.
+
+The marker stays visible in the label on screen, and the reasoning text begins `STUB SCENARIO` and
+names the marker that caused it, so a forced answer can never be mistaken for a real one in a demo.
+Nothing escalates off a forced disagreement either — `judgeTransaction` short-circuits when the
+screening tier is `stub`, so the expensive tier is never reached and no spend is possible. Markers
+do nothing once a real adapter is configured.
+
 ### Checking the engine
 
 ```bash

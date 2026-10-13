@@ -101,11 +101,20 @@ export function parseVerdict(text: string, userIntent: Intent): Omit<Verdict, "t
     const verdict = asIntent(obj.verdict);
     if (!verdict) continue;
 
+    const agrees = verdict === userIntent;
+    // A question only means anything on a disagreement. Models sometimes supply one anyway
+    // after agreeing, and surfacing it would ask the person to defend a call nobody contested.
+    const question =
+      !agrees && typeof obj.question === "string" && obj.question.trim()
+        ? obj.question.trim()
+        : undefined;
+
     return {
-      agrees: verdict === userIntent,
+      agrees,
       verdict,
       confidence: clampConfidence(obj.confidence),
       reasoning: typeof obj.reasoning === "string" ? obj.reasoning.trim() : "",
+      ...(question ? { question } : {}),
     };
   }
 
