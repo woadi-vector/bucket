@@ -38,7 +38,7 @@ const bundled = await build({
 const dir = mkdtempSync(join(tmpdir(), "bucket-engine-"));
 const file = join(dir, "engine.mjs");
 writeFileSync(file, bundled.outputFiles[0].contents);
-const { judgeTransaction, reconsiderTransaction, CACHED_REASONING } = await import(
+const { judgeTransaction, reconsiderTransaction, shapeEvidence, CACHED_REASONING } = await import(
   pathToFileURL(file).href
 );
 rmSync(dir, { recursive: true, force: true });
@@ -442,6 +442,33 @@ const check = (name, cond, detail = "") => {
       { adapter: capturing, evidence: probe.source },
     );
     check("evidence: no query when the label is only markers", probe.queries.length === 0);
+  }
+
+  // The same page under two URLs must count once. Observed against the real Tavily API:
+  // two of three results were one article, one with a tracking parameter.
+  {
+    const dupes = {
+      name: "fixture",
+      async search(query) {
+        return shapeEvidence({
+          query,
+          provider: "fixture",
+          items: [
+            { title: "A", url: "https://www.example.com/pads?op=1", snippet: "$40" },
+            { title: "A again", url: "https://example.com/pads", snippet: "$40" },
+            { title: "A trailing", url: "https://example.com/pads/", snippet: "$40" },
+            { title: "B", url: "https://other.example/kit", snippet: "$45" },
+          ],
+        });
+      },
+    };
+    const v = await reconsiderTransaction(base, { adapter: capturing, evidence: dupes });
+    check(
+      "evidence: one page counted once",
+      v.telemetry?.evidence?.resultCount === 2,
+      `count=${v.telemetry?.evidence?.resultCount}`,
+    );
+    check("evidence: the distinct source survived", promptSeen.includes("$45"));
   }
 
   // Screening never searches: there is no claim to check until the person has spoken.

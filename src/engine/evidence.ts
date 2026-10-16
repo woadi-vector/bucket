@@ -93,6 +93,29 @@ const MAX_ITEMS = 3;
 const MAX_SNIPPET = 300;
 const MAX_SUMMARY = 400;
 
+/**
+ * Reduces a URL to something comparable, for spotting the same page twice.
+ *
+ * Drops the scheme, a leading `www.`, the query string, the fragment and a trailing slash.
+ * Dropping the whole query is heavy-handed and will occasionally merge two genuinely
+ * different pages that differ only by a parameter. That is the right way to be wrong here:
+ * losing one result costs a line of a prompt, while counting one source twice distorts what
+ * the model thinks it knows.
+ *
+ * Falls back to the raw string for anything unparseable rather than throwing, since a
+ * malformed URL from a provider must not take down a verdict.
+ */
+function canonicalUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^www\./, "");
+    const path = url.pathname.replace(/\/+$/, "");
+    return `${host}${path}`.toLowerCase();
+  } catch {
+    return raw.trim().toLowerCase();
+  }
+}
+
 /** Trims a provider's response to what a prompt should carry. */
 export function shapeEvidence(args: {
   query: string;
@@ -100,8 +123,19 @@ export function shapeEvidence(args: {
   summary?: string;
   items: EvidenceItem[];
 }): Evidence | null {
+  // Deduplicate before capping. Providers return the same page under several URLs (a bare
+  // one and the same one with tracking parameters), which was observed against the real API
+  // on the first probe: two of three slots went to one article. Left in, a single source
+  // appears to the model as two sources agreeing, which is worse than having one fewer.
+  const seen = new Set<string>();
   const items = args.items
     .filter((i) => i.title.trim() && i.url.trim())
+    .filter((i) => {
+      const key = canonicalUrl(i.url);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice(0, MAX_ITEMS)
     .map((i) => ({
       title: i.title.trim().slice(0, 160),
