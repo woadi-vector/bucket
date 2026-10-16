@@ -4,6 +4,37 @@ import type { ReconsiderRequest, Verdict, VerdictRequest } from "@/engine";
 import { getSecret } from "@/lib/server-env";
 import { getOrCreateSessionId } from "@/lib/server/session";
 import { checkBudget, checkGlobalCeiling, recordUsage } from "@/lib/server/budget";
+import { recordChallenge, recordReconsideration } from "@/lib/server/exchanges";
+
+/**
+ * What the browser receives.
+ *
+ * Narrower than the engine's {@link Verdict} on purpose: telemetry names the model and its
+ * token cost and stays server-side. Wider in one place — `exchangeId` identifies the stored
+ * challenge so an explanation can be attached to it later.
+ */
+export type VerdictResponse = Pick<
+  Verdict,
+  "agrees" | "verdict" | "confidence" | "reasoning" | "question" | "explanationAccepted"
+> & { cached?: true; exchangeId?: string };
+
+/** Strips telemetry and drops absent optional fields rather than sending nulls. */
+function toResponse(verdict: Verdict, exchangeId?: string): VerdictResponse {
+  return {
+    agrees: verdict.agrees,
+    verdict: verdict.verdict,
+    confidence: verdict.confidence,
+    reasoning: verdict.reasoning,
+    ...(verdict.question ? { question: verdict.question } : {}),
+    ...(verdict.explanationAccepted !== undefined
+      ? { explanationAccepted: verdict.explanationAccepted }
+      : {}),
+    // Lets the client — and anyone reading the stored state — tell a canned answer from a
+    // model's. Only present when true, so ordinary verdicts are unchanged.
+    ...(verdict.cached ? { cached: true } : {}),
+    ...(exchangeId ? { exchangeId } : {}),
+  };
+}
 
 /**
  * The server side of the verdict call.
@@ -60,14 +91,14 @@ function validateRequest(data: unknown): VerdictRequest {
 
 export const requestVerdict = createServerFn({ method: "POST" })
   .inputValidator(validateRequest)
-  .handler(async ({ data }): Promise<Verdict> => {
+  .handler(async ({ data }): Promise<VerdictResponse> => {
     const apiKey = getSecret("NEBIUS_API_KEY");
 
     // No key configured is not an error the person using the app should see. The engine
     // already degrades to agreeing with them; falling through to the stub does the same.
     if (!apiKey) {
       console.warn("[verdict] NEBIUS_API_KEY is not set — falling back to the stub adapter");
-      return judgeTransaction(data);
+      return logged(await judgeTransaction(data), data);
     }
 
     const sessionId = getOrCreateSessionId();
@@ -77,7 +108,8 @@ export const requestVerdict = createServerFn({ method: "POST" })
     const decision = await checkBudget(sessionId, "nano");
     if (!decision.allowed) {
       console.warn(`[verdict] budget guard declined a call: ${decision.reason}`);
-      return judgeTransaction(data); // stub — degrades to agreeing with the user
+      // Stub — degrades to agreeing with the user.
+      return logged(await judgeTransaction(data), data, sessionId);
     }
 
     const verdict = await judgeTransaction(data, {
@@ -102,26 +134,39 @@ export const requestVerdict = createServerFn({ method: "POST" })
       checkCeiling: checkGlobalCeiling,
     });
 
-    // Telemetry names the model and its token cost. It stays server-side, in model_usage —
-    // the browser gets the four contract fields and no clue which model answered.
-    return {
-      agrees: verdict.agrees,
-      verdict: verdict.verdict,
-      confidence: verdict.confidence,
-      reasoning: verdict.reasoning,
-      // Lets the client — and anyone reading the stored state — tell a canned answer from a
-      // model's. Only present when true, so ordinary verdicts are unchanged.
-      ...(verdict.cached ? { cached: true } : {}),
-    };
+    return logged(verdict, data, sessionId);
   });
+
+/**
+ * Records a contested verdict and hands back the response the browser sees.
+ *
+ * Only disagreements are stored. An agreement is not an exchange, and counting it would pad
+ * the denominator with purchases Bucket never questioned.
+ *
+ * A failed write costs the reader an `exchangeId` and nothing else: the verdict still goes
+ * back, and the reconsideration path writes a standalone row when it arrives without one.
+ */
+async function logged(
+  verdict: Verdict,
+  request: VerdictRequest,
+  sessionId?: string,
+): Promise<VerdictResponse> {
+  if (verdict.agrees) return toResponse(verdict);
+  const id = await recordChallenge({
+    sessionId: sessionId ?? getOrCreateSessionId(),
+    request,
+    verdict,
+  });
+  return toResponse(verdict, id);
+}
 
 /**
  * Client input for the second pass. Same rules as above: it reaches a paid API, so every
  * field is validated and every string is capped before anything is spent.
  */
-function validateReconsiderRequest(data: unknown): ReconsiderRequest {
+function validateReconsiderRequest(data: unknown): ReconsiderRequest & { exchangeId?: string } {
   const base = validateRequest(data);
-  const { question, explanation, priorVerdict } = data as Record<string, unknown>;
+  const { question, explanation, priorVerdict, exchangeId } = data as Record<string, unknown>;
 
   if (typeof explanation !== "string" || !explanation.trim()) {
     throw new Error("explanation is required");
@@ -132,6 +177,11 @@ function validateReconsiderRequest(data: unknown): ReconsiderRequest {
     question: typeof question === "string" ? question.slice(0, 500) : "",
     explanation: explanation.slice(0, 1000),
     priorVerdict: requireIntent(priorVerdict),
+    // Which stored challenge this answers. Absent is normal: the write that would have
+    // produced it may have failed, and the log handles that by writing a standalone row.
+    ...(typeof exchangeId === "string" && exchangeId.trim()
+      ? { exchangeId: exchangeId.slice(0, 64) }
+      : {}),
   };
 }
 
@@ -148,34 +198,40 @@ function validateReconsiderRequest(data: unknown): ReconsiderRequest {
  */
 export const requestReconsideration = createServerFn({ method: "POST" })
   .inputValidator(validateReconsiderRequest)
-  .handler(async ({ data }): Promise<Verdict> => {
+  .handler(async ({ data }): Promise<VerdictResponse> => {
     const apiKey = getSecret("NEBIUS_API_KEY");
+    const sessionId = getOrCreateSessionId();
+
+    // Every path below ends at the same two lines: answer, then write it down. The record is
+    // only worth reading if it contains the times Bucket was wrong and the times it never
+    // really answered, so no branch here gets to skip the log.
+    const settle = async (verdict: Verdict): Promise<VerdictResponse> => {
+      await recordReconsideration({
+        sessionId,
+        exchangeId: data.exchangeId,
+        request: data,
+        verdict,
+      });
+      return toResponse(verdict);
+    };
 
     if (!apiKey) {
       console.warn("[reconsider] NEBIUS_API_KEY is not set — falling back to the stub adapter");
-      return reconsiderTransaction(data);
+      return settle(await reconsiderTransaction(data));
     }
-
-    const sessionId = getOrCreateSessionId();
 
     const decision = await checkBudget(sessionId, "ultra");
     if (!decision.allowed) {
       console.warn(`[reconsider] budget guard declined a call: ${decision.reason}`);
-      return reconsiderTransaction(data); // stub — accepts the explanation
+      // Stub — accepts the explanation.
+      return settle(await reconsiderTransaction(data));
     }
 
-    const verdict = await reconsiderTransaction(data, {
-      adapter: createTokenFactoryAdapter({ apiKey }),
-      onUsage: ({ telemetry, agrees }) => recordUsage({ sessionId, telemetry, agreed: agrees }),
-      checkCeiling: checkGlobalCeiling,
-    });
-
-    return {
-      agrees: verdict.agrees,
-      verdict: verdict.verdict,
-      confidence: verdict.confidence,
-      reasoning: verdict.reasoning,
-      explanationAccepted: verdict.explanationAccepted,
-      ...(verdict.cached ? { cached: true } : {}),
-    };
+    return settle(
+      await reconsiderTransaction(data, {
+        adapter: createTokenFactoryAdapter({ apiKey }),
+        onUsage: ({ telemetry, agrees }) => recordUsage({ sessionId, telemetry, agreed: agrees }),
+        checkCeiling: checkGlobalCeiling,
+      }),
+    );
   });

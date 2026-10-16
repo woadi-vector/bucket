@@ -18,3 +18,12 @@ NEBIUS_API_KEY=
 # GLOBAL_VERDICT_LIMIT=5000
 # GLOBAL_TOKEN_LIMIT=5000000
 # GLOBAL_USD_LIMIT=15
+
+# Opens /exchanges, the log of every purchase the model contested. Pass it as ?key=<value>.
+# Unset means the page stays closed, so the log is never published by forgetting something.
+# It holds purchase labels and whatever people typed to explain themselves, which is why it
+# is the one part of the app behind anything at all. In production:
+#
+#   npx wrangler secret put EXCHANGES_KEY
+#
+# EXCHANGES_KEY=

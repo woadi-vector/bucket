@@ -134,6 +134,22 @@ Nothing escalates off a forced disagreement either — `judgeTransaction` short-
 screening tier is `stub`, so the expensive tier is never reached and no spend is possible. Markers
 do nothing once a real adapter is configured.
 
+### The exchange log
+
+Every purchase the model contested is recorded: the tag, the verdict, the question, the
+person's answer, and whether that answer changed the verdict. `/exchanges?key=...` shows them
+newest first, with the counts behind the only claim here worth checking, which is how often a
+challenge survived contact with the person's reasoning.
+
+Nothing is filtered. The challenges that collapsed as soon as someone explained themselves sit
+beside the ones that held, because a rate you can only see the good half of is not evidence.
+Rows where a fallback answered rather than a model are flagged `degraded` and excluded from
+both rates rather than quietly improving them.
+
+The page needs `EXCHANGES_KEY` set (see `.dev.vars.example`). Unset means closed, so the log
+cannot be published by forgetting to configure something. The rest of the app has no login
+on purpose; this page holds what people typed about their own spending, so it cannot.
+
 ### Checking the engine
 
 ```bash
@@ -144,6 +160,17 @@ Bundles `src/engine` on its own and runs `judgeTransaction` against fake adapter
 spend ceiling, escalation, and failing closed. It never calls Token Factory and needs no key.
 `fetch` is replaced with one that throws, so a stray network call fails the run instead of
 spending. One `[engine] ceiling check threw` error line in the output is expected.
+
+```bash
+npm run check:exchanges
+```
+
+Checks the arithmetic behind `/exchanges`: which rows are excluded from the rates, what the
+denominator is, that a degraded second pass taints the whole exchange, that a reconsideration
+arriving without its challenge id is still recorded, and that the log stays closed when
+`EXCHANGES_KEY` is unset. Runs against the in-memory store, so it covers the semantics and not
+the SQL; the SQL aggregate applies the same rules and is exercised against Miniflare below.
+Two `EXCHANGES_KEY is not set` warnings in the output are expected.
 
 ### Against the real Workers runtime
 

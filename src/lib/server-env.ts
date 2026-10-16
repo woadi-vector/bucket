@@ -25,7 +25,10 @@ export interface D1Database {
 export interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
   first<T = unknown>(colName?: string): Promise<T | null>;
-  run(): Promise<{ success: boolean }>;
+  // `meta.changes` is how D1 reports rows written. Optional because this is a hand-written
+  // subset of the real binding, so a caller must handle its absence rather than reading a
+  // missing field as zero.
+  run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
   all<T = unknown>(): Promise<{ results: T[] }>;
 }
 
