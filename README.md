@@ -134,10 +134,45 @@ Nothing escalates off a forced disagreement either — `judgeTransaction` short-
 screening tier is `stub`, so the expensive tier is never reached and no spend is possible. Markers
 do nothing once a real adapter is configured.
 
+### Looking things up
+
+The weakest moment in Bucket is the one where someone says "the old one broke, I need this."
+Nothing in a model's weights knows whether that particular thing can be fixed for a tenth of
+the price. So when a person explains themselves, the second pass can search first, and the
+expensive tier weighs the explanation against what came back.
+
+Two properties hold, and both are enforced by `npm run check:engine`:
+
+**A lookup can only ever add a fact.** No key, no sensible query, an empty result, a provider
+error and a timeout past four seconds are all the same outcome: the verdict is decided the way
+it was before any of this existed. Nothing turns into a harsher answer because a third party
+was slow, and nothing records "searched, 0 results" as though something had been learned.
+
+**The person's explanation is never sent.** It is the most personal text in the app. Only two
+things leave: the purchase label they already typed, and a single yes/no read on whether their
+explanation mentions something failing, which picks between a repair query and a price query.
+That read is a keyword test rather than a model call for the same reason. An unusual phrasing
+therefore picks the broader query, which is a worse search and not a leak.
+
+A cheaper option existing is also not a verdict. The prompt says so: people decline repairs
+for reasons that are none of the model's business, results can be stale or about a different
+model of the thing, and finding nothing is never a point against the person.
+
+`TAVILY_API_KEY` turns it on (see `.dev.vars.example`). Because the integration is built to
+fail quietly, there is a loud way to check it:
+
+```bash
+npm run probe:tavily
+npm run probe:tavily "sony wh-1000xm4 earpad replacement cost"
+```
+
+That calls Tavily once for real, prints the status and body, and names any field the app reads
+that did not arrive. One credit per run.
+
 ### The exchange log
 
 Every purchase the model contested is recorded: the tag, the verdict, the question, the
-person's answer, and whether that answer changed the verdict. `/exchanges?key=...` shows them
+person's answer, whatever was looked up, and whether that answer changed the verdict. `/exchanges?key=...` shows them
 newest first, with the counts behind the only claim here worth checking, which is how often a
 challenge survived contact with the person's reasoning.
 

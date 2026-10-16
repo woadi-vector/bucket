@@ -17,8 +17,10 @@ import type { ModelAdapter } from "./adapter";
 import { buildReconsiderPrompt, buildVerdictPrompt } from "./prompt";
 import { parseVerdict, VerdictParseError } from "./parse";
 import { createStubAdapter } from "./stub-adapter";
+import { buildEvidenceQuery, type Evidence, type EvidenceSource } from "./evidence";
 import type {
   CeilingStatus,
+  EvidenceTelemetry,
   ModelTier,
   ReconsiderRequest,
   Verdict,
@@ -39,7 +41,16 @@ export type {
   ModelTier,
   TokenUsage,
   CeilingStatus,
+  EvidenceTelemetry,
 } from "./types";
+export {
+  buildEvidenceQuery,
+  describeEvidence,
+  shapeEvidence,
+  type Evidence,
+  type EvidenceItem,
+  type EvidenceSource,
+} from "./evidence";
 export { VerdictParseError } from "./parse";
 export { createStubAdapter, STUB_MARKERS } from "./stub-adapter";
 export {
@@ -102,6 +113,17 @@ export type EngineOptions = {
    * the expensive tier. Omitted means no ceiling.
    */
   checkCeiling?: () => CeilingStatus | Promise<CeilingStatus>;
+  /**
+   * Lets the engine look something up before reconsidering a contested purchase.
+   *
+   * Supplied like the adapter: the caller owns the credentials and the network, the engine
+   * decides what is worth asking. Used only by `reconsiderTransaction`, because the thing
+   * worth checking is the claim the person makes when they explain themselves, and there is
+   * no claim yet during screening.
+   *
+   * Omitted means no lookup, which is the behaviour this engine had before the hook existed.
+   */
+  evidence?: EvidenceSource;
   signal?: AbortSignal;
   /** Injectable clock, so history phrasing is deterministic under test. */
   now?: number;
@@ -190,12 +212,16 @@ export async function reconsiderTransaction(
     return acceptedByDefault(request, adapter.name, CACHED_REASONING, true);
   }
 
+  // Looked up before the model is asked, so the answer can weigh it. Never fatal: see
+  // `gatherEvidence` for why every failure here is the same as not having searched.
+  const found = await gatherEvidence(request, options);
+
   const startedAt = Date.now();
   let response;
   try {
     response = await adapter.complete({
       model: tier === "stub" ? "stub" : MODELS.ultra,
-      messages: buildReconsiderPrompt(request, options.now),
+      messages: buildReconsiderPrompt(request, options.now, found?.evidence),
       maxTokens: MAX_TOKENS,
       signal: options.signal,
     });
@@ -226,11 +252,59 @@ export async function reconsiderTransaction(
       latencyMs: Date.now() - startedAt,
       usage: response.usage,
       stage: "reconsideration",
+      ...(found ? { evidence: found.telemetry } : {}),
     },
   };
 
   await options.onUsage?.({ telemetry: verdict.telemetry!, agrees: verdict.agrees });
   return verdict;
+}
+
+/**
+ * Runs the lookup, if there is one to run and something worth looking up.
+ *
+ * Every way this can go wrong returns undefined, which is the same as never having had an
+ * evidence source at all: no source configured, no sensible query, the provider returning
+ * nothing, the provider throwing, the provider hanging past the timeout. The verdict is then
+ * decided exactly as it was before any of this existed.
+ *
+ * That uniformity is the point. A third party being slow must never be able to change what
+ * Bucket says about somebody's money, and a reader of the log must not be able to mistake an
+ * outage for a finding.
+ */
+async function gatherEvidence(
+  request: ReconsiderRequest,
+  options: EngineOptions,
+): Promise<{ evidence: Evidence; telemetry: EvidenceTelemetry } | undefined> {
+  const source = options.evidence;
+  if (!source) return undefined;
+
+  const query = buildEvidenceQuery(request.purchase, request.explanation);
+  if (!query) return undefined;
+
+  const startedAt = Date.now();
+  let evidence: Evidence | null;
+  try {
+    evidence = await source.search(query);
+  } catch (error) {
+    console.warn("[engine] evidence lookup failed; deciding without it", error);
+    return undefined;
+  }
+  // An Evidence object carrying neither a summary nor a single item is not a finding, and
+  // recording it would put "searched, 0 results" in the log as though something had been
+  // learned. `shapeEvidence` already collapses that case to null, but a source is free not to
+  // use it, so the engine does not take the provider's word for having found something.
+  if (!evidence || (!evidence.summary && evidence.items.length === 0)) return undefined;
+
+  return {
+    evidence,
+    telemetry: {
+      provider: evidence.provider,
+      query: evidence.query,
+      resultCount: evidence.items.length,
+      latencyMs: Date.now() - startedAt,
+    },
+  };
 }
 
 export const DEGRADED_RECONSIDER_REASONING =

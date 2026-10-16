@@ -5,6 +5,7 @@ import { getSecret } from "@/lib/server-env";
 import { getOrCreateSessionId } from "@/lib/server/session";
 import { checkBudget, checkGlobalCeiling, recordUsage } from "@/lib/server/budget";
 import { recordChallenge, recordReconsideration } from "@/lib/server/exchanges";
+import { createTavilySource } from "@/lib/server/tavily";
 
 /**
  * What the browser receives.
@@ -227,9 +228,17 @@ export const requestReconsideration = createServerFn({ method: "POST" })
       return settle(await reconsiderTransaction(data));
     }
 
+    // A lookup is offered only when a key is configured. Without one the engine reconsiders
+    // on the person's explanation and their history alone, exactly as it did before.
+    const tavilyKey = getSecret("TAVILY_API_KEY");
+    if (!tavilyKey) {
+      console.warn("[reconsider] TAVILY_API_KEY is not set — reconsidering without a lookup");
+    }
+
     return settle(
       await reconsiderTransaction(data, {
         adapter: createTokenFactoryAdapter({ apiKey }),
+        ...(tavilyKey ? { evidence: createTavilySource({ apiKey: tavilyKey }) } : {}),
         onUsage: ({ telemetry, agrees }) => recordUsage({ sessionId, telemetry, agreed: agrees }),
         checkCeiling: checkGlobalCeiling,
       }),

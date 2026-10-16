@@ -77,6 +77,13 @@ function ExchangeEntry({ row }: { row: ExchangeRow }) {
 
       {row.explanation ? <p style={{ margin: "0.25rem 0" }}>Answered: {row.explanation}</p> : null}
 
+      {row.evidenceQuery ? (
+        <p style={{ margin: "0.25rem 0", color: "#555" }}>
+          Looked up via {row.evidenceProvider}: {row.evidenceQuery} ({row.evidenceResults ?? 0}{" "}
+          results)
+        </p>
+      ) : null}
+
       {row.finalVerdict ? (
         <p style={{ margin: "0.25rem 0" }}>
           Then said <strong>{row.finalVerdict}</strong>

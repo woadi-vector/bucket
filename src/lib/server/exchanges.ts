@@ -27,6 +27,10 @@ export type ExchangeRow = {
   finalConfidence: number | null;
   finalReasoning: string | null;
   explanationAccepted: number | null;
+  /** What was looked up before the second pass, when anything was. Null means no lookup. */
+  evidenceProvider: string | null;
+  evidenceQuery: string | null;
+  evidenceResults: number | null;
   degraded: number;
   createdAt: number;
   answeredAt: number | null;
@@ -77,6 +81,10 @@ export async function recordChallenge(args: {
     finalConfidence: null,
     finalReasoning: null,
     explanationAccepted: null,
+    // Screening never looks anything up: there is no claim to check until the person speaks.
+    evidenceProvider: null,
+    evidenceQuery: null,
+    evidenceResults: null,
     // A cached or fallback answer is not evidence about the model. Flag it at write time so
     // no later query has to guess which rows to exclude.
     degraded: verdict.cached || verdict.telemetry?.degraded ? 1 : 0,
@@ -139,6 +147,8 @@ export async function recordReconsideration(args: {
   const { sessionId, exchangeId, request, verdict } = args;
   const now = Date.now();
   const degraded = verdict.cached || verdict.telemetry?.degraded ? 1 : 0;
+  // Absent whenever no lookup contributed, which is the normal case.
+  const ev = verdict.telemetry?.evidence;
 
   const db = getDb();
   if (!db) {
@@ -160,6 +170,9 @@ export async function recordReconsideration(args: {
       finalConfidence: null,
       finalReasoning: null,
       explanationAccepted: null,
+      evidenceProvider: null,
+      evidenceQuery: null,
+      evidenceResults: null,
       degraded,
       createdAt: now,
       answeredAt: null,
@@ -171,6 +184,9 @@ export async function recordReconsideration(args: {
       finalConfidence: verdict.confidence,
       finalReasoning: verdict.reasoning || null,
       explanationAccepted: verdict.explanationAccepted ? 1 : 0,
+      evidenceProvider: ev?.provider ?? null,
+      evidenceQuery: ev?.query ?? null,
+      evidenceResults: ev?.resultCount ?? null,
       degraded: target.degraded || degraded,
       answeredAt: now,
     });
@@ -183,7 +199,8 @@ export async function recordReconsideration(args: {
         .prepare(
           `UPDATE exchanges
               SET explanation = ?, final_verdict = ?, final_confidence = ?, final_reasoning = ?,
-                  explanation_accepted = ?, degraded = MAX(degraded, ?), answered_at = ?
+                  explanation_accepted = ?, evidence_provider = ?, evidence_query = ?,
+                  evidence_results = ?, degraded = MAX(degraded, ?), answered_at = ?
             WHERE id = ? AND session_id = ?`,
         )
         .bind(
@@ -192,6 +209,9 @@ export async function recordReconsideration(args: {
           verdict.confidence,
           verdict.reasoning || null,
           verdict.explanationAccepted ? 1 : 0,
+          ev?.provider ?? null,
+          ev?.query ?? null,
+          ev?.resultCount ?? null,
           degraded,
           now,
           exchangeId,
@@ -216,8 +236,9 @@ export async function recordReconsideration(args: {
            (id, session_id, amount, label, bucket_name, readiness_tag, user_intent,
             screening_verdict, screening_confidence, screening_reasoning, question,
             explanation, final_verdict, final_confidence, final_reasoning,
-            explanation_accepted, degraded, created_at, answered_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            explanation_accepted, evidence_provider, evidence_query, evidence_results,
+            degraded, created_at, answered_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         crypto.randomUUID(),
@@ -236,6 +257,9 @@ export async function recordReconsideration(args: {
         verdict.confidence,
         verdict.reasoning || null,
         verdict.explanationAccepted ? 1 : 0,
+        ev?.provider ?? null,
+        ev?.query ?? null,
+        ev?.resultCount ?? null,
         degraded,
         now,
         now,
@@ -334,6 +358,9 @@ export async function readExchanges(limit = 100): Promise<ExchangeRow[]> {
                 final_confidence     AS finalConfidence,
                 final_reasoning      AS finalReasoning,
                 explanation_accepted AS explanationAccepted,
+                evidence_provider    AS evidenceProvider,
+                evidence_query       AS evidenceQuery,
+                evidence_results     AS evidenceResults,
                 degraded,
                 created_at           AS createdAt,
                 answered_at          AS answeredAt

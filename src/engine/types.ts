@@ -58,6 +58,22 @@ export type ReconsiderRequest = VerdictRequest & {
 
 export type ModelTier = "nano" | "ultra" | "stub";
 
+/**
+ * What a lookup contributed, recorded after the fact.
+ *
+ * Kept in telemetry rather than on the verdict itself because the person using the app should
+ * hear the finding in the reasoning, in plain words, not read a list of search hits. This is
+ * for the ledger and the exchange log, where someone checking the work can see what Bucket was
+ * told before it decided.
+ */
+export type EvidenceTelemetry = {
+  provider: string;
+  query: string;
+  /** How many results were put in front of the model. Zero when only a summary came back. */
+  resultCount: number;
+  latencyMs: number;
+};
+
 export type TokenUsage = {
   promptTokens: number;
   completionTokens: number;
@@ -83,6 +99,14 @@ export type VerdictTelemetry = {
   escalatedFrom?: ModelTier;
   /** Which pass produced this verdict. Screening unless stated. */
   stage?: "screening" | "adjudication" | "reconsideration";
+  /**
+   * What was looked up before this verdict, when anything was.
+   *
+   * Absent means no search happened, or it found nothing, or it failed. Those are the same
+   * outcome for the verdict and are deliberately not distinguished here: a reader should not
+   * be able to mistake "the provider timed out" for a finding.
+   */
+  evidence?: EvidenceTelemetry;
   /** True when no model was called because the global spend ceiling had been reached. */
   cached?: boolean;
 };

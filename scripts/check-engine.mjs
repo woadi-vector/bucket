@@ -284,7 +284,175 @@ const check = (name, cond, detail = "") => {
   check("reconsider: ceiling marked cached", ceiled.cached === true);
 }
 
-// 9. The guard itself: nothing above touched the network.
+// 9. Evidence: a lookup can only ever add a fact, and never makes Bucket harsher.
+{
+  const base = {
+    purchase: { amount: 260, label: "Headphones", intent: "need", readinessTag: "replacing" },
+    history: [],
+    question: "What changed since the last pair?",
+    priorVerdict: "want",
+    explanation: "The old pair broke this morning",
+  };
+
+  // Records what the engine chose to search for, so the query itself can be asserted on.
+  const recording = (result) => {
+    const queries = [];
+    return {
+      queries,
+      source: {
+        name: "fixture",
+        async search(query) {
+          queries.push(query);
+          return typeof result === "function" ? result(query) : result;
+        },
+      },
+    };
+  };
+
+  const found = {
+    query: "Headphones repair cost vs replacement",
+    provider: "fixture",
+    summary: "Replacement earpads for this model run about $40.",
+    items: [{ title: "Earpad kit", url: "https://example.com/pads", snippet: "$39.99" }],
+  };
+
+  // The prompt is what the model actually sees, so assert on it rather than on an internal.
+  let promptSeen = "";
+  const capturing = {
+    name: "fixture",
+    async complete(req) {
+      promptSeen = req.messages.map((m) => m.content).join("\n");
+      return {
+        text: '{"verdict":"want","confidence":0.8,"reasoning":"There is a $40 repair."}',
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+
+  const { queries, source } = recording(found);
+  const v = await reconsiderTransaction(base, { adapter: capturing, evidence: source });
+  check("evidence: a lookup happened", queries.length === 1, queries.join(" | "));
+  check(
+    "evidence: breakage wording picks the repair query",
+    queries[0] === "Headphones repair cost vs replacement",
+    queries[0],
+  );
+  check("evidence: the finding reaches the prompt", promptSeen.includes("$40"));
+  check(
+    "evidence: the model is told not to treat a cheaper option as decisive",
+    promptSeen.includes("does not settle the question"),
+  );
+  check("evidence: recorded in telemetry", v.telemetry?.evidence?.provider === "fixture");
+  check("evidence: result count recorded", v.telemetry?.evidence?.resultCount === 1);
+
+  // THE PRIVACY PROPERTY. The explanation is the most personal text in the app and must never
+  // be handed to a third-party search API, however much it might improve the query.
+  {
+    const secret = "my ex took the old pair when she moved out and it broke in the car";
+    const { queries: sent } = recording(null);
+    await reconsiderTransaction(
+      { ...base, explanation: secret },
+      { adapter: capturing, evidence: recording(null).source },
+    );
+    const probe = recording(null);
+    await reconsiderTransaction(
+      { ...base, explanation: secret },
+      { adapter: capturing, evidence: probe.source },
+    );
+    const leaked = probe.queries.some((q) => q.includes("ex") || q.includes("moved out"));
+    check("evidence: the explanation is never sent to the provider", !leaked, probe.queries[0]);
+    check("evidence: only the label is searched", probe.queries[0].startsWith("Headphones"));
+    check("evidence: unused probe stayed empty", sent.length === 0);
+  }
+
+  // Without breakage wording, the broader query. Same two inputs, different shape.
+  {
+    const probe = recording(null);
+    await reconsiderTransaction(
+      { ...base, explanation: "I want them for the gym" },
+      { adapter: capturing, evidence: probe.source },
+    );
+    check(
+      "evidence: no breakage wording picks the alternatives query",
+      probe.queries[0] === "Headphones cheaper alternatives typical price",
+      probe.queries[0],
+    );
+  }
+
+  // Scenario markers are a dev affordance and have no business in somebody's search query.
+  {
+    const probe = recording(null);
+    await reconsiderTransaction(
+      { ...base, purchase: { ...base.purchase, label: "Headphones #want #low" } },
+      { adapter: capturing, evidence: probe.source },
+    );
+    check("evidence: stub markers stripped from the query", !probe.queries[0].includes("#"));
+  }
+
+  // Every failure path must land where "no search at all" lands: the verdict is unchanged and
+  // nothing is recorded. A slow third party cannot be allowed to alter a verdict about money.
+  const noEvidence = await reconsiderTransaction(base, { adapter: capturing });
+  const baseline = { verdict: noEvidence.verdict, accepted: noEvidence.explanationAccepted };
+
+  for (const [name, bad] of [
+    [
+      "returns null",
+      {
+        name: "fixture",
+        async search() {
+          return null;
+        },
+      },
+    ],
+    [
+      "throws",
+      {
+        name: "fixture",
+        async search() {
+          throw new Error("provider down (expected)");
+        },
+      },
+    ],
+    [
+      "returns nothing usable",
+      {
+        name: "fixture",
+        async search() {
+          return { query: "q", provider: "fixture", items: [] };
+        },
+      },
+    ],
+  ]) {
+    const r = await reconsiderTransaction(base, { adapter: capturing, evidence: bad });
+    check(
+      `evidence: a source that ${name} changes nothing`,
+      r.verdict === baseline.verdict && r.explanationAccepted === baseline.accepted,
+    );
+    check(
+      `evidence: a source that ${name} records no evidence`,
+      r.telemetry?.evidence === undefined,
+    );
+  }
+
+  // A label with nothing searchable in it must not produce a query for "".
+  {
+    const probe = recording(found);
+    await reconsiderTransaction(
+      { ...base, purchase: { ...base.purchase, label: "#want" } },
+      { adapter: capturing, evidence: probe.source },
+    );
+    check("evidence: no query when the label is only markers", probe.queries.length === 0);
+  }
+
+  // Screening never searches: there is no claim to check until the person has spoken.
+  {
+    const probe = recording(found);
+    await judgeTransaction(request, { adapter: capturing, evidence: probe.source });
+    check("evidence: screening never looks anything up", probe.queries.length === 0);
+  }
+}
+
+// 10. The guard itself: nothing above touched the network.
 check("no network calls attempted", fetchAttempts === 0, `fetch=${fetchAttempts}`);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

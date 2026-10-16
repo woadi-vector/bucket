@@ -1,5 +1,6 @@
 import type { ChatMessage } from "./adapter";
 import type { HistoricalPurchase, ReconsiderRequest, VerdictRequest } from "./types";
+import { describeEvidence, type Evidence } from "./evidence";
 
 /** How many prior purchases to show the model. Enough for a pattern, short enough to stay cheap. */
 const HISTORY_LIMIT = 12;
@@ -122,6 +123,7 @@ const RATIONALISATION_PATTERNS = [
 export function buildReconsiderPrompt(
   request: ReconsiderRequest,
   now: number = Date.now(),
+  evidence?: Evidence,
 ): ChatMessage[] {
   const { purchase, history, question, explanation, priorVerdict } = request;
 
@@ -166,6 +168,9 @@ export function buildReconsiderPrompt(
     "",
     "Their recent spending:",
     describeHistory(history, now),
+    // Last, and only when there is something. The model weighs what the person said first;
+    // a lookup is a check on that, not the starting point.
+    evidence ? `\n${describeEvidence(evidence)}` : null,
   ]
     .filter(Boolean)
     .join("\n");

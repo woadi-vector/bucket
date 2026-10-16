@@ -27,3 +27,14 @@ NEBIUS_API_KEY=
 #   npx wrangler secret put EXCHANGES_KEY
 #
 # EXCHANGES_KEY=
+
+# Lets Bucket look something up before it reconsiders a contested purchase: whether the thing
+# the person says broke can be repaired for less than a replacement costs. Credits come with
+# the Nebius Builder Program. Without this key the second pass decides on their explanation
+# and their history alone, which is how it worked before the lookup existed.
+#
+# Only the purchase label is ever sent, never what the person typed. See src/engine/evidence.ts.
+#
+#   npx wrangler secret put TAVILY_API_KEY
+#
+# TAVILY_API_KEY=
