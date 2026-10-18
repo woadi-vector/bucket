@@ -122,6 +122,9 @@ async function report(r) {
   console.log(`Category     ${r.product.category ?? "(none from Channel3)"}`);
   console.log(`Agent        ${r.agent.degraded ? "[fallback] " : ""}${r.agent.reason}`);
   console.log(
+    `Checked      ${r.check.ran ? `confirmed: ${r.check.reason || "it is the item"}` : `not run (${r.check.why})`}`,
+  );
+  console.log(
     `Filed under  ${r.bucket.name} (a ${r.bucket.tag}, holds at ${dollars(r.bucket.holdThresholdCents)})`,
   );
   console.log(

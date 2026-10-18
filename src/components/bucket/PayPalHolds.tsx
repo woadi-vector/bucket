@@ -158,7 +158,13 @@ function StateLine({ hold, remaining }: { hold: PublicHold; remaining: number })
     return <div className={`${base} text-muted-foreground`}>Ending…</div>;
   }
   const who =
-    hold.decidedBy === "clock" ? "time ran out" : hold.decidedBy === "policy" ? "need" : "you";
+    hold.decidedBy === "clock"
+      ? "time ran out"
+      : hold.decidedBy === "policy"
+        ? hold.bucketTag === "need"
+          ? "a need"
+          : "under threshold"
+        : "you";
   return (
     <div className={`${base} text-muted-foreground`}>
       {hold.state === "captured" ? "Captured" : "Released"} · {who}

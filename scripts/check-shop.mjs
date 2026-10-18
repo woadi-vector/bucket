@@ -61,6 +61,8 @@ const fake = {
   screenVerdict: "need", // what the screening model says about a need-bucket purchase
   agentPrompts: [],
   screenPrompts: [],
+  verifyPrompts: [],
+  verifyAnswer: null,
   paypalCalls: [],
   channel3Bodies: [],
 };
@@ -115,7 +117,15 @@ globalThis.fetch = async (url, init = {}) => {
 
   if (u.host === "api.tokenfactory.nebius.com") {
     const system = body.messages[0].content;
-    if (!/shopping agent/.test(system)) fake.screenPrompts.push(body.messages);
+    if (!/shopping agent|skeptical checker/.test(system)) fake.screenPrompts.push(body.messages);
+    if (/skeptical checker/.test(system)) {
+      fake.verifyPrompts.push(body.messages);
+      const content = fake.verifyAnswer ?? '{"isRequestedItem": true, "reason": "It is the item."}';
+      return json(200, {
+        choices: [{ finish_reason: "stop", message: { content } }],
+        usage: { prompt_tokens: 80, completion_tokens: 10, total_tokens: 90 },
+      });
+    }
     if (/shopping agent/.test(system)) {
       fake.agentPrompts.push(body.messages);
       const content =
@@ -187,6 +197,8 @@ const reset = () => {
   fake.screenVerdict = "need";
   fake.agentPrompts = [];
   fake.screenPrompts = [];
+  fake.verifyPrompts = [];
+  fake.verifyAnswer = null;
   fake.paypalCalls = [];
   fake.channel3Bodies = [];
 };
@@ -346,6 +358,52 @@ fake.agentAnswer =
   const r = await run("oat milk", 2000);
   check("a pick marked categoryFits false is a decline", !r.ok && r.reason === "declined");
   check("and places no hold", fake.paypalCalls.length === 0);
+}
+
+// The second check overrules a pick that is not the thing asked for.
+reset();
+catalog.unshift({
+  id: "bag",
+  title: "HIC Kitchen Oat Milk Bag",
+  brand: "HIC",
+  price: 4.95,
+  category: "Home & Garden > Kitchen & Dining > Kitchen Tools & Utensils > Strainers",
+});
+fake.agentAnswer =
+  '{"choice": 0, "categoryFits": true, "bucketId": "b5", "reason": "For making oat milk."}';
+fake.verifyAnswer =
+  '{"isRequestedItem": false, "reason": "A strainer bag is a tool for making oat milk, not oat milk."}';
+{
+  const r = await run("oat milk", 2000);
+  check(
+    "the second check overrules a tool picked for the thing itself",
+    !r.ok && r.reason === "declined" && r.overruled === true,
+  );
+  check("and nothing reaches PayPal", fake.paypalCalls.length === 0);
+  const user = fake.verifyPrompts[0]?.[1]?.content ?? "";
+  check(
+    "the checker sees the product and its category",
+    user.includes("HIC Kitchen Oat Milk Bag") && user.includes("Strainers"),
+  );
+}
+catalog.shift();
+
+// An unreadable check does not block; the purchase continues and says it was not checked.
+reset();
+fake.verifyAnswer = "I think so?";
+{
+  const r = await run("running shoes", 9000);
+  check(
+    "an unparseable check lets the purchase continue, marked unchecked",
+    r.ok && r.check.ran === false,
+  );
+}
+
+// A passing check is reported on the result.
+reset();
+{
+  const r = await run("running shoes", 9000);
+  check("a passing check is reported", r.ok && r.check.ran === true && r.check.fits === true);
 }
 
 // A bare null with no reason is not a decline; it falls back like any unusable answer.

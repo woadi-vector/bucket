@@ -1,5 +1,6 @@
 import {
   chooseProduct,
+  verifyMatch,
   createTokenFactoryAdapter,
   judgeTransaction,
   type Verdict,
@@ -61,6 +62,8 @@ export type ShopResult =
       product: ProductOption;
       bucket: { id: string; name: string; tag: BucketTag; holdThresholdCents: number };
       agent: { reason: string; degraded: boolean };
+      /** The second model's view of the pairing. `ran: false` means it was not checked. */
+      check: { ran: true; fits: true; reason: string } | { ran: false; why: string };
       screen: ShopScreen;
       policy: PolicyDecision;
       hold: PublicHold;
@@ -78,6 +81,8 @@ export type ShopResult =
       message: string;
       /** How many catalog results the agent looked at before declining. */
       considered?: number;
+      /** True when the agent picked something and the second check overruled the pick. */
+      overruled?: boolean;
       /** What it looked at, so a decline can be judged by the person instead of trusted. */
       options?: { title: string; priceCents: number; merchant: string; category: string | null }[];
     };
@@ -135,7 +140,7 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
     return { ok: false, reason: "no-results", message: "Nothing matched under that price." };
   }
 
-  // 2. Choose. One budgeted Nano call, recorded in the same ledger as every verdict.
+  // 2. Choose. One budgeted call to Nemotron Super, recorded in the same ledger as every verdict.
   const apiKey = getSecret("NEBIUS_API_KEY");
   const allowed = apiKey ? (await checkBudget(sessionId, "nano")).allowed : false;
   const adapter = apiKey && allowed ? createTokenFactoryAdapter({ apiKey }) : undefined;
@@ -168,6 +173,32 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
   }
 
   const product = products[choice.productIndex];
+
+  // 2b. A second model, with no stake in finding anything, checks the pairing. Its "no" ends the
+  // request the same way a decline does.
+  const check = await verifyMatch(input.request.slice(0, 200), product, {
+    adapter,
+    checkCeiling: checkGlobalCeiling,
+  });
+  await recordUsage({ sessionId, telemetry: check.telemetry, agreed: check.ran && check.fits });
+  if (check.ran && !check.fits) {
+    return {
+      ok: false,
+      reason: "declined",
+      message: `The agent picked ${product.title}, and a second check overruled it: ${
+        check.reason || "it is not the thing that was asked for."
+      }`,
+      overruled: true,
+      considered: products.length,
+      options: products.map((p) => ({
+        title: p.title,
+        priceCents: p.priceCents,
+        merchant: p.merchant,
+        category: p.category,
+      })),
+    };
+  }
+
   const bucket = buckets.find((b) => b.id === choice.bucketId) ?? wantBucket;
   const tag = resolveBucketTag(bucket);
   const holdThresholdCents = toCents(resolveHoldThreshold(bucket));
@@ -200,6 +231,9 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
       product,
       bucket: { id: bucket.id, name: bucket.name, tag, holdThresholdCents },
       agent: { reason: choice.reason, degraded: !!choice.telemetry.degraded },
+      check: check.ran
+        ? { ran: true, fits: true, reason: check.reason }
+        : { ran: false, why: check.why },
       screen,
       policy,
       hold: toPublicHold(hold),

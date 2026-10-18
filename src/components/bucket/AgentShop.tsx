@@ -131,13 +131,20 @@ export function AgentShop({ onCaptured, onHeld }: Props) {
   );
 }
 
+/** Catalog prices keep their cents: "$34.95", not the app's rounded "$35". */
+const cents = (c: number) => `$${(c / 100).toFixed(2)}`;
+
 function NotBought({ result }: { result: Extract<ShopResult, { ok: false }> }) {
   const declined = result.reason === "declined";
   return (
     <div className="rounded-xl bg-secondary/60 px-4 py-3">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
         <X className="h-3 w-3" />
-        {declined ? "The agent bought nothing" : "Not bought"}
+        {result.overruled
+          ? "Second check overruled the agent"
+          : declined
+            ? "The agent bought nothing"
+            : "Not bought"}
       </div>
       <p className="mt-1.5 text-sm leading-relaxed">{result.message}</p>
       {declined && result.considered !== undefined && (
@@ -155,7 +162,7 @@ function NotBought({ result }: { result: Extract<ShopResult, { ok: false }> }) {
               <li key={i} className="leading-snug">
                 <span className="font-medium">{o.title}</span>{" "}
                 <span className="text-muted-foreground">
-                  {formatCurrency(o.priceCents / 100)} · {o.merchant}
+                  {cents(o.priceCents)} · {o.merchant}
                   {o.category ? ` · ${o.category}` : " · no category"}
                 </span>
               </li>
@@ -175,7 +182,7 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
       <Step label={`Found · ${result.considered} listings`}>
         <span className="font-medium">{product.title}</span>{" "}
         <span className="text-muted-foreground">
-          {formatCurrency(product.priceCents / 100)} · {product.merchant}
+          {cents(product.priceCents)} · {product.merchant}
         </span>
         {product.category && (
           <div className="text-xs text-muted-foreground">{product.category}</div>
@@ -191,6 +198,18 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
         </span>{" "}
         <span className="text-muted-foreground">({bucket.tag})</span>
         {agent.reason && <div className="text-xs text-muted-foreground">{agent.reason}</div>}
+      </Step>
+      <Step label="Second check">
+        {result.check.ran ? (
+          <>
+            <span className="font-medium">Confirmed it is what you asked for.</span>
+            {result.check.reason && (
+              <div className="text-xs text-muted-foreground">{result.check.reason}</div>
+            )}
+          </>
+        ) : (
+          <span className="text-muted-foreground">Not run. {result.check.why}</span>
+        )}
       </Step>
       <Step label="Screen" icon={<ShieldQuestion className="h-3 w-3" />}>
         {screen.ran ? (

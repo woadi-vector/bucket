@@ -449,6 +449,11 @@ function degradedVerdict(
 
 export {
   chooseProduct,
+  verifyMatch,
+  buildVerifyPrompt,
+  parseVerify,
+  VERIFY_MODEL,
+  type MatchCheck,
   buildShopPrompt,
   parseShopChoice,
   SHOP_MODEL,

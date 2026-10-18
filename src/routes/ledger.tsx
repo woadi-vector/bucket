@@ -36,7 +36,9 @@ function outcome(h: PublicHold): string {
     h.decidedBy === "clock"
       ? "the clock ran out"
       : h.decidedBy === "policy"
-        ? "a need, passed at once"
+        ? h.bucketTag === "need"
+          ? "a need, passed at once"
+          : "a small want, under its bucket's threshold"
         : "the person decided";
   return `${h.state === "captured" ? "captured" : "released (voided)"} · ${by}`;
 }
