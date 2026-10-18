@@ -78,6 +78,8 @@ export type ShopResult =
       message: string;
       /** How many catalog results the agent looked at before declining. */
       considered?: number;
+      /** What it looked at, so a decline can be judged by the person instead of trusted. */
+      options?: { title: string; priceCents: number; merchant: string; category: string | null }[];
     };
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
@@ -151,7 +153,18 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
 
   // The agent looked and found nothing that is what was asked for. Nothing reaches PayPal.
   if (choice.declined) {
-    return { ok: false, reason: "declined", message: choice.reason, considered: products.length };
+    return {
+      ok: false,
+      reason: "declined",
+      message: choice.reason,
+      considered: products.length,
+      options: products.map((p) => ({
+        title: p.title,
+        priceCents: p.priceCents,
+        merchant: p.merchant,
+        category: p.category,
+      })),
+    };
   }
 
   const product = products[choice.productIndex];

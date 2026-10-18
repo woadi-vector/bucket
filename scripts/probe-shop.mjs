@@ -97,6 +97,12 @@ const r = await shop.runShop({ sessionId, request, maxPriceCents: Math.round(max
 if (!r.ok && r.reason === "declined") {
   console.log(`Considered   ${r.considered} products from Channel3`);
   console.log(`Declined     ${r.message}`);
+  console.log("\nWhat it looked at:");
+  for (const o of r.options ?? []) {
+    console.log(
+      `  - ${o.title} ($${(o.priceCents / 100).toFixed(2)}, ${o.merchant}) [${o.category ?? "no category"}]`,
+    );
+  }
   console.log("\nThe agent looked and bought nothing. Nothing reached PayPal.");
   process.exit(0);
 }

@@ -145,6 +145,24 @@ function NotBought({ result }: { result: Extract<ShopResult, { ok: false }> }) {
           It looked at {result.considered} listings. Nothing reached PayPal.
         </p>
       )}
+      {declined && result.options && result.options.length > 0 && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+            See what it looked at
+          </summary>
+          <ul className="mt-2 space-y-1.5">
+            {result.options.map((o, i) => (
+              <li key={i} className="leading-snug">
+                <span className="font-medium">{o.title}</span>{" "}
+                <span className="text-muted-foreground">
+                  {formatCurrency(o.priceCents / 100)} · {o.merchant}
+                  {o.category ? ` · ${o.category}` : " · no category"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

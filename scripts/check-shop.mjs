@@ -321,6 +321,10 @@ fake.agentAnswer =
   );
   check("a decline places no hold", fake.paypalCalls.length === 0, fake.paypalCalls.join(" | "));
   check("and says how many it looked at", !r.ok && r.considered === 2);
+  check(
+    "and lists what it looked at, categories included",
+    !r.ok && r.options?.length === 2 && r.options[0].category === "Beauty > Skin Care",
+  );
   const user = fake.agentPrompts[0]?.[1]?.content ?? "";
   check("the agent sees each product's category", user.includes("category: Beauty > Skin Care"));
 }
