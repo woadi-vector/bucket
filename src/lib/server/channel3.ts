@@ -49,7 +49,7 @@ type RawProduct = {
   id?: string;
   title?: string;
   brands?: { name?: string }[];
-  category?: { title?: string; path?: string | string[] } | null;
+  category?: { title?: string; path?: string | CategoryNode[] } | null;
   images?: { url?: string; is_main_image?: boolean }[];
   offers?: {
     url?: string;
@@ -61,13 +61,38 @@ type RawProduct = {
 
 const clip = (s: string, n: number) => s.replace(/\s+/g, " ").trim().slice(0, n);
 
-/** Channel3's category as one readable line. The path's shape is not pinned down, so take either. */
-function categoryOf(p: RawProduct): string | null {
+type CategoryNode = string | { title?: string; name?: string; slug?: string };
+
+/**
+ * Channel3's category as one readable line, e.g. "Apparel > Shoes > Running Shoes".
+ *
+ * The live API returns the path as a list of objects, not strings. The first version joined
+ * them directly and every model saw "[object Object] > [object Object]", which is why the
+ * agent could not tell a skin care kit from a drink. Each node is read by title, then name,
+ * then slug.
+ */
+function nodeName(node: CategoryNode): string | null {
+  if (typeof node === "string") return node.trim() || null;
+  if (node && typeof node === "object") {
+    const name = node.title ?? node.name ?? node.slug;
+    return typeof name === "string" && name.trim() ? name.trim() : null;
+  }
+  return null;
+}
+
+export function categoryOf(p: RawProduct): string | null {
   const c = p.category;
   if (!c) return null;
-  const path = Array.isArray(c.path) ? c.path.join(" > ") : c.path;
-  const text = path || c.title;
-  return text ? clip(String(text), 120) : null;
+  const path = Array.isArray(c.path)
+    ? c.path
+        .map(nodeName)
+        .filter((n): n is string => !!n)
+        .join(" > ")
+    : typeof c.path === "string"
+      ? c.path
+      : "";
+  const text = path || (typeof c.title === "string" ? c.title : "");
+  return text ? clip(text, 120) : null;
 }
 
 /** Flattens Channel3 products to one option each, dropping anything without a USD price. */

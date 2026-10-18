@@ -92,7 +92,14 @@ globalThis.fetch = async (url, init = {}) => {
         id: p.id,
         title: p.title,
         brands: [{ id: p.brand, name: p.brand }],
-        category: p.category ? { slug: "x", title: p.category, path: p.category } : null,
+        // Shaped like the live API: the path is a list of objects, not strings.
+        category: p.category
+          ? {
+              slug: "x",
+              title: p.category.split(" > ").at(-1),
+              path: p.category.split(" > ").map((title) => ({ slug: title.toLowerCase(), title })),
+            }
+          : null,
         images: [{ url: `https://img.example/${p.id}.jpg`, is_main_image: true }],
         offers: [
           {
@@ -327,6 +334,7 @@ fake.agentAnswer =
   );
   const user = fake.agentPrompts[0]?.[1]?.content ?? "";
   check("the agent sees each product's category", user.includes("category: Beauty > Skin Care"));
+  check("and never an unreadable one", !user.includes("[object Object]"));
 }
 catalog.shift();
 
