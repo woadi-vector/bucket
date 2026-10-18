@@ -382,6 +382,72 @@ reset();
   check("and the same hold can be let go on retry", retry.ok && retry.hold.state === "voided");
 }
 
+// A person cannot keep a want after its window closed. The clock ends it instead.
+reset();
+{
+  const hold = await payments.placeHold({
+    ...base,
+    bucketId: "bucket-gear",
+    bucketTag: "want",
+    verdict: "hold",
+  });
+  globalThis.__bucketHolds.get(hold.id).deadlineAt = Date.now() - 1;
+  const late = await payments.keep(hold.id, { decidedBy: "user", sessionId: "session-a" });
+  check(
+    "keeping a want after its window is refused as expired",
+    !late.ok && late.reason === "expired",
+    late.ok ? "kept" : late.reason,
+  );
+  check(
+    "and the clock voids it instead of capturing",
+    late.hold?.state === "voided" &&
+      late.hold?.decidedBy === "clock" &&
+      count("POST /v2/payments/authorizations") === 1 &&
+      fake.calls.some((c) => c.endsWith("/void")),
+    fake.calls.join(" | "),
+  );
+}
+
+// The checkout policy: deterministic, and a model can only ever add a hold.
+{
+  const { decidePolicy, parsePolicyInput } = await importBundle(
+    await build({
+      entryPoints: ["src/lib/server/policy.ts"],
+      bundle: true,
+      platform: "neutral",
+      format: "esm",
+      write: false,
+      logLevel: "error",
+      alias: { "@": resolve("src") },
+    }),
+  );
+  const d = (input) => decidePolicy(input).decision;
+  check("policy: a need captures", d({ bucketTag: "need", amountCents: 1250 }) === "capture");
+  check(
+    "policy: a want over the threshold holds",
+    d({ bucketTag: "want", amountCents: 8999 }) === "hold",
+  );
+  check("policy: a small want passes", d({ bucketTag: "want", amountCents: 1500 }) === "capture");
+  check(
+    "policy: a screen mismatch holds a need",
+    d({ bucketTag: "need", amountCents: 1250, screen: "mismatch" }) === "hold",
+  );
+  check(
+    "policy: a screen agreement never releases a held want",
+    d({ bucketTag: "want", amountCents: 8999, screen: "agree" }) === "hold",
+  );
+  check(
+    "policy: malformed requests are refused",
+    [
+      { bucketTag: "maybe", amountCents: 100 },
+      { bucketTag: "want", amountCents: 12.5 },
+      { bucketTag: "want", amountCents: -1 },
+      { bucketTag: "want", amountCents: 100, screen: "approve" },
+      null,
+    ].every((x) => parsePolicyInput(x) === null),
+  );
+}
+
 // One token serves every call.
 check(
   "one access token served every call in this run",

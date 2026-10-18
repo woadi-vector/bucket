@@ -244,3 +244,25 @@ export async function listHolds(limit = 100): Promise<HoldRow[]> {
     .all<DbRow>();
   return results.map(fromDb);
 }
+
+/** One visitor's holds, newest first. What the Sleep On It tray reads. */
+export async function listHoldsForSession(sessionId: string, limit = 50): Promise<HoldRow[]> {
+  const db = getDb();
+  if (!db) {
+    return [...devRows().values()]
+      .filter((r) => r.sessionId === sessionId)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, limit)
+      .map((r) => ({ ...r }));
+  }
+  const { results } = await db
+    .prepare("SELECT * FROM holds WHERE session_id = ? ORDER BY created_at DESC LIMIT ?")
+    .bind(sessionId, limit)
+    .all<DbRow>();
+  return results.map(fromDb);
+}
+
+/** A hold as anyone may see it: no session id, nothing that links a row to a visitor. */
+export type PublicHold = Omit<HoldRow, "sessionId">;
+
+export const toPublicHold = ({ sessionId: _sessionId, ...rest }: HoldRow): PublicHold => rest;

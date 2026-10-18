@@ -1,6 +1,9 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "bucket",
+	// The PayPal entry deploys as its own Worker so the Nebius demo (`bucket`, built from `main`)
+	// stays frozen through its Dec 1-15 judging. Do not merge this branch into `main` before then:
+	// the name, the database and the vars below would replace the Nebius deployment's.
+	"name": "bucket-paypal",
 	"workers_dev": true,
 	"preview_urls": false,
 	"compatibility_date": "2025-09-24",
@@ -23,6 +26,9 @@
 		"GLOBAL_VERDICT_LIMIT": "5000",
 		"GLOBAL_TOKEN_LIMIT": "5000000",
 		"GLOBAL_USD_LIMIT": "8",
+		// How long a want waits in Sleep On It before the clock voids it. 1440 (24 hours) is the
+		// product; the demo runs short so a judge can watch a hold expire. See payments.ts.
+		"HOLD_WINDOW_MINUTES": "5",
 	},
 	// Phase 2 persistence. `database_id` is a placeholder until someone with the Cloudflare
 	// account runs:  npx wrangler d1 create bucket-db
@@ -31,8 +37,11 @@
 	"d1_databases": [
 		{
 			"binding": "BUCKET_DB",
-			"database_name": "bucket-db",
-			"database_id": "cbc9b352-50ba-447f-8c7f-b8d5328518bd",
+			// Its own database, separate from the Nebius Worker's `bucket-db`. Create it with
+			//   npx wrangler d1 create bucket-paypal-db
+			// and paste the returned uuid here. See docs/deploy-paypal.md.
+			"database_name": "bucket-paypal-db",
+			"database_id": "REPLACE_WITH_PAYPAL_D1_DATABASE_ID",
 			"migrations_dir": "migrations",
 		},
 		

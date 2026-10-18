@@ -16,7 +16,12 @@ import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const CLIENT_DIR = ".output/public";
-const SECRET_NAMES = ["NEBIUS_API_KEY"];
+const SECRET_NAMES = [
+  "NEBIUS_API_KEY",
+  "PAYPAL_CLIENT_SECRET",
+  "PAYPAL_CLIENT_ID",
+  "PAYPAL_DEMO_VAULT_ID",
+];
 
 function loadSecrets() {
   const found = new Map();
@@ -53,7 +58,9 @@ if (!existsSync(CLIENT_DIR)) {
 
 const secrets = loadSecrets();
 if (secrets.size === 0) {
-  console.error("No secrets configured, so there is nothing to check for. Set NEBIUS_API_KEY.");
+  console.error(
+    "No secrets configured, so there is nothing to check for. Set NEBIUS_API_KEY or the PAYPAL_ values.",
+  );
   process.exit(1);
 }
 

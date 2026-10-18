@@ -56,7 +56,7 @@ export type DecisionResult =
   | { ok: true; hold: HoldRow }
   | {
       ok: false;
-      reason: "not-found" | "not-held" | "paypal-error";
+      reason: "not-found" | "not-held" | "expired" | "paypal-error";
       hold: HoldRow | null;
       error?: string;
     };
@@ -177,6 +177,20 @@ async function decide(
     // Indistinguishable from a missing hold on purpose: one visitor learns nothing about
     // another's holds by guessing ids.
     return { ok: false, reason: "not-found", hold: null };
+  }
+
+  // A person cannot keep a want after its window closed, even if the sweep has not reached it
+  // yet. The clock's decision wins: the hold is ended the way ON_EXPIRY says, by the clock, and
+  // the person is told it expired. Without this, "24 hours to decide" would only be true when
+  // the sweep happened to run on time.
+  if (
+    action === "capture" &&
+    opts.decidedBy === "user" &&
+    before.state === "held" &&
+    Date.now() >= before.deadlineAt
+  ) {
+    const ended = await decide(id, ON_EXPIRY, { decidedBy: "clock" });
+    return { ok: false, reason: "expired", hold: ended.hold };
   }
 
   if (!(await claim(id, opts.sessionId))) {

@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ExchangesRouteImport } from './routes/exchanges'
+import { Route as ApiLedgerRouteImport } from './routes/api/ledger'
+import { Route as ApiPolicyCheckRouteImport } from './routes/api/policy/check'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +24,49 @@ const ExchangesRoute = ExchangesRouteImport.update({
   path: '/exchanges',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLedgerRoute = ApiLedgerRouteImport.update({
+  id: '/api/ledger',
+  path: '/api/ledger',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPolicyCheckRoute = ApiPolicyCheckRouteImport.update({
+  id: '/api/policy/check',
+  path: '/api/policy/check',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/exchanges': typeof ExchangesRoute
+  '/api/ledger': typeof ApiLedgerRoute
+  '/api/policy/check': typeof ApiPolicyCheckRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/exchanges': typeof ExchangesRoute
+  '/api/ledger': typeof ApiLedgerRoute
+  '/api/policy/check': typeof ApiPolicyCheckRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/exchanges': typeof ExchangesRoute
+  '/api/ledger': typeof ApiLedgerRoute
+  '/api/policy/check': typeof ApiPolicyCheckRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/exchanges'
+  fullPaths: '/' | '/exchanges' | '/api/ledger' | '/api/policy/check'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/exchanges'
-  id: '__root__' | '/' | '/exchanges'
+  to: '/' | '/exchanges' | '/api/ledger' | '/api/policy/check'
+  id: '__root__' | '/' | '/exchanges' | '/api/ledger' | '/api/policy/check'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ExchangesRoute: typeof ExchangesRoute
+  ApiLedgerRoute: typeof ApiLedgerRoute
+  ApiPolicyCheckRoute: typeof ApiPolicyCheckRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +85,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExchangesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ledger': {
+      id: '/api/ledger'
+      path: '/api/ledger'
+      fullPath: '/api/ledger'
+      preLoaderRoute: typeof ApiLedgerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/policy/check': {
+      id: '/api/policy/check'
+      path: '/api/policy/check'
+      fullPath: '/api/policy/check'
+      preLoaderRoute: typeof ApiPolicyCheckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ExchangesRoute: ExchangesRoute,
+  ApiLedgerRoute: ApiLedgerRoute,
+  ApiPolicyCheckRoute: ApiPolicyCheckRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
