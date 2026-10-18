@@ -41,7 +41,7 @@
 			//   npx wrangler d1 create bucket-paypal-db
 			// and paste the returned uuid here. See docs/deploy-paypal.md.
 			"database_name": "bucket-paypal-db",
-			"database_id": "REPLACE_WITH_PAYPAL_D1_DATABASE_ID",
+			"database_id": "61017189-9e4e-4704-8003-ffb0516776e0",
 			"migrations_dir": "migrations",
 		},
 		

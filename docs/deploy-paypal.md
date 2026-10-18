@@ -24,7 +24,7 @@ npx wrangler d1 create bucket-paypal-db
 ```
 
 Copy the `database_id` it prints into `wrangler.jsonc`, replacing
-`REPLACE_WITH_PAYPAL_D1_DATABASE_ID`. The id is not a secret; commit it.
+`REPLACE_WITH_PAYPAL_D1_DATABASE_ID` (done Oct 18: `61017189-9e4e-4704-8003-ffb0516776e0`). The id is not a secret; commit it.
 
 _Check:_ the `database_id` line in `wrangler.jsonc` shows a uuid.
 
