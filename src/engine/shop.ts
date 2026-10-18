@@ -17,8 +17,18 @@ import type { CeilingStatus, VerdictTelemetry } from "./types";
  * is not on the list, falls back to the deterministic choice rather than being trusted.
  */
 
-export const SHOP_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B";
-const MAX_TOKENS = 2048;
+/**
+ * Nemotron Super, verified on Token Factory (docs/token-factory-findings.md). Nano was tried
+ * first and, given a readable category of "Health & Beauty > ... > Bath & Body Gift Sets",
+ * still bought an oat-milk-named gift set for an oat milk request. The choice is one call per
+ * purchase, so the larger model is affordable here.
+ *
+ * Recorded in the spend ledger under the "nano" tier, whose price constant is lower than
+ * Super's real price. The global ceiling still bounds total tokens, which is the binding limit.
+ */
+export const SHOP_MODEL = "nvidia/nemotron-3-super-120b-a12b";
+// Reasoning models spend their budget on the trace first; too small a budget returns an empty answer.
+const MAX_TOKENS = 4096;
 
 export type ShopProduct = {
   title: string;
@@ -94,7 +104,8 @@ export function buildShopPrompt(req: ShopRequest): ChatMessage[] {
         "Write the reason as one plain sentence about this product and this request. Mention only what the",
         "request said and what the listing shows; do not claim the person asked for anything they did not.",
         "",
-        'Answer with JSON only. To buy: {"choice": <product number>, "bucketId": "<one bucket id from the list>", "reason": "<sentence>"}',
+        'Answer with JSON only. To buy: {"choice": <product number>, "categoryFits": <true or false>, "bucketId": "<one bucket id from the list>", "reason": "<sentence>"}',
+        '"categoryFits" says whether the chosen product\'s category is consistent with the request. If it is false, decline instead.',
         'To decline: {"choice": null, "reason": "<sentence saying what was wrong with the options>"}',
       ].join("\n"),
     },
@@ -134,6 +145,13 @@ export function parseShopChoice(
     if (choice < 0 || choice >= req.products.length) continue;
     if (typeof o.bucketId !== "string" || !ids.has(o.bucketId)) continue;
     const reason = typeof o.reason === "string" ? o.reason.trim().slice(0, 300) : "";
+    // The model's own statement that its pick does not fit is a decline, whatever it picked.
+    if (o.categoryFits === false) {
+      return {
+        declined: true,
+        reason: reason || "The closest listing's category does not match the request.",
+      };
+    }
     return { productIndex: choice, bucketId: o.bucketId, reason };
   }
   return null;

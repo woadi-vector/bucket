@@ -338,6 +338,16 @@ fake.agentAnswer =
 }
 catalog.shift();
 
+// A pick the agent itself says does not fit is treated as a decline.
+reset();
+fake.agentAnswer =
+  '{"choice": 0, "categoryFits": false, "bucketId": "b1", "reason": "Closest match is a gift set."}';
+{
+  const r = await run("oat milk", 2000);
+  check("a pick marked categoryFits false is a decline", !r.ok && r.reason === "declined");
+  check("and places no hold", fake.paypalCalls.length === 0);
+}
+
 // A bare null with no reason is not a decline; it falls back like any unusable answer.
 reset();
 fake.agentAnswer = '{"choice": null}';
