@@ -1,257 +1,160 @@
-# Bucket
+# Bucket for PayPal
 
-**Every other budgeting app is a bookkeeper. Bucket interrupts the decision before the money
-moves — and then argues with you about it.**
+**Your shopping agent can buy. Bucket decides whether it should.**
 
-You tag a purchase a want or a need. Bucket reads that tag against your own spending history
-and, when it disagrees, says so:
+Agentic checkout removes the moment where you feel a purchase. Bucket puts that moment back,
+only where it belongs. You sort your money into buckets and decide once, calmly, which are for
+needs and which are for wants. A shopping agent then buys on your behalf through PayPal, and every
+purchase it makes is held to the call you made: needs go straight through, and a want over its
+bucket's threshold waits as a **live PayPal authorization** until you keep it or let it go. Let it
+go, and the hold is voided at PayPal and the money is yours again.
 
-> You've now labeled three expensive tech/office items (standing desk, mechanical keyboard,
-> headphones) as "needs" from your Dining Out bucket, all decided on the spot. The only actual
-> dining expense (ramen) you correctly called a want. This pattern suggests you're rationalizing
-> upgrades as necessities.
->
-> — `nvidia/Nemotron-3-Ultra-550b-a55b`, on a real purchase in this app
+**Try it:** <https://bucket-paypal.jason-wold.workers.dev> (no login, sandbox money)
 
-It then **offers** to pull the purchase back so you can sleep on it. You can always say no.
-Bucket advises; it does not enforce, and it does not predict.
+**Public ledger of every hold:** <https://bucket-paypal.jason-wold.workers.dev/ledger>
+
+> This is the `paypal` branch, the PayPal AI Hackathon entry. The `main` branch is a separate
+> entry (Nebius x NVIDIA) built on the same engine with a different subject.
 
 ---
 
-## How NVIDIA Nemotron models are used
+## What happens when the agent shops
 
-Two tiers, both served by **Nebius Token Factory**, and the split is the point.
+Type "trail running shoes" and a price ceiling. In about ten seconds:
 
-| tier         | model                                   | when it runs                     |
-| ------------ | --------------------------------------- | -------------------------------- |
-| screening    | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | every tagged purchase            |
-| adjudication | `nvidia/Nemotron-3-Ultra-550b-a55b`     | only when Nano contests your tag |
+1. **Search.** Channel3 returns real listings under your ceiling, from many retailers.
+2. **Choose.** Nemotron Super picks one product and files it into one of your buckets. It is
+   never told which buckets are needs, so it cannot route a purchase around a pause. It may
+   decline when nothing listed is what you asked for.
+3. **Second check.** A separate model (Nemotron Nano, temperature 0) is asked one narrow
+   question: is this product the thing that was requested? Its "no" overrules the agent.
+4. **Screen.** If the bucket is a need, the purchase is checked against your own history: does
+   this actually read like a need for you? A doubt turns it into a hold.
+5. **Rule.** Code, not a model, decides: a need passes; a want at or over its bucket's threshold
+   is held; a doubted need is held.
+6. **PayPal.** The order is placed from your saved PayPal wallet with `intent: AUTHORIZE`, so the
+   money is reserved, not taken. A pass is captured immediately. A hold waits in the PayPal tab
+   with its authorization id and a countdown.
 
-**Nano screens everything.** It is asked one question: does this person's own label hold up
-against how they have labelled their own spending before?
+Then you decide. **Keep it** captures the authorization. **Let it go** voids it. Do nothing and
+the clock voids it when the window closes (24 hours in the product, 5 minutes in this demo).
 
-**Ultra adjudicates only the contested calls.** When Nano disagrees with you, the 550B model is
-asked the _same_ question independently — not "a smaller model objected, what do you think?",
-which would invite deference and make scoring the two tiers against each other meaningless.
+On a live run the agent once picked an oat milk strainer bag for "oat milk", reasoning that it is
+"for making oat milk". The second check overruled it and nothing reached PayPal. That is the
+design: a model will sometimes be wrong, so no model's answer is the last word on money.
 
-Measured from this app's own ledger, one contested purchase:
+---
 
-| tier  | prompt | completion | cost    | latency |
-| ----- | ------ | ---------- | ------- | ------- |
-| nano  | 363    | 269        | 64 µ$   | 2160 ms |
-| ultra | 363    | 425        | 1576 µ$ | 2528 ms |
+## How PayPal is used
 
-Ultra costs **24.6x** a Nano call for 1.25x the tokens. Stated precisely: the saving comes from
-price per token, not from the cheap tier doing less work.
+All money movement uses PayPal's REST APIs in the **sandbox**. Server code calls them with
+`fetch`; nothing PayPal-related runs in the browser.
 
-**Neither call ever blocks you.** Both tiers are seconds-scale, so the verdict is fired without
-being awaited and attaches whenever it lands. The interception screen stays the half-second beat
-it was designed to be.
+| Step | PayPal API | What it does in Bucket |
+| --- | --- | --- |
+| Save the wallet (once) | `POST /v3/vault/setup-tokens`, buyer approval, `POST /v3/vault/payment-tokens` | The buyer's PayPal wallet is saved so the agent can pay without a popup per purchase |
+| Agent buys | `POST /v2/checkout/orders` with `intent: AUTHORIZE` and `payment_source.paypal.vault_id` | PayPal completes the order and places a hold in one call, with no buyer present |
+| Bucket on the record | `purchase_units[0].custom_id` | The bucket id is stored on PayPal's own order record and checked on the way back |
+| Keep it | `POST /v2/payments/authorizations/{id}/capture` | Takes the held money |
+| Let it go, or time runs out | `POST /v2/payments/authorizations/{id}/void` | Releases the held money |
+| Reconcile | `GET /v2/payments/authorizations/{id}` | After a failed call, records what PayPal says actually happened |
 
-## Where Token Factory fits
+Every money-moving call sends a `PayPal-Request-Id` derived from the hold and the action
+(`<hold>:authorize`, `<hold>:capture`, `<hold>:void`), so a retry repeats the original request
+instead of moving money twice. The hold window is capped inside PayPal's 3-day honor period.
 
-Everything reaches Token Factory's OpenAI-compatible API at
-`https://api.tokenfactory.nebius.com/v1` through a single adapter,
-[`src/engine/token-factory-adapter.ts`](src/engine/token-factory-adapter.ts). Swapping providers
-means writing one adapter and touching nothing else.
-
-The API key is a Cloudflare Workers secret, read server-side only. A committed check,
-[`scripts/check-no-secret-in-bundle.mjs`](scripts/check-no-secret-in-bundle.mjs), scans the built
-client output for both the key's value and its name and fails the build path if either appears.
-
-**We probed the API before building on it, and four widely-repeated assumptions were wrong.**
-Model ids are namespaced `nvidia/` and the commonly-cited `Llama-3_1-Nemotron-Ultra-253B-v1`
-does not exist. The `reasoning_content` quirk does not reproduce. Tool calls work fine. And the
-real hazard is `max_tokens`: set it too low and the API returns **HTTP 200 with an empty content
-string**, which reads like a bad prompt rather than a truncation.
-
-All of it, with raw numbers and the measurements that corrected our own first conclusions:
-**[docs/token-factory-findings.md](docs/token-factory-findings.md)**. Re-runnable via
-`node scripts/probe-token-factory.mjs`.
-
-## The verdict engine is a separate thing from the app
-
-[`src/engine/`](src/engine/) is standalone. It imports nothing from React, the components, or the
-routes; history is passed in rather than read from storage; callers supply a transport adapter but
-never choose a model. The boundary is enforced by `no-restricted-imports` in `eslint.config.js`,
-not by convention.
-
-The test is whether it runs with the rest of the app deleted:
+Bucket's policy is also available to any agent, not only its own:
 
 ```bash
-npx esbuild src/engine/index.ts --bundle --platform=neutral --format=esm --outfile=engine.mjs
+curl -X POST https://bucket-paypal.jason-wold.workers.dev/api/policy/check \
+  -H "content-type: application/json" \
+  -d '{"bucketTag":"want","amountCents":8999}'
+# {"decision":"hold","reason":"A want over $40.00. Holding it to sleep on."}
 ```
 
-It bundles to ~11 KB with zero external imports. That is what lets the evaluation harness score
-the engine against fixtures without standing up the app — and it is why the decision layer could
-live somewhere other than this UI.
+Code: [`src/lib/server/paypal.ts`](src/lib/server/paypal.ts) (the client),
+[`src/lib/server/payments.ts`](src/lib/server/payments.ts) (the only module that moves money),
+[`src/lib/server/holds.ts`](src/lib/server/holds.ts) (the ledger).
 
-## Running it
+---
 
-Requires Node 20+.
+## How AI is used
+
+All models are NVIDIA Nemotron, served by **Nebius Token Factory**.
+
+| Role | Model | Input | Output |
+| --- | --- | --- | --- |
+| Shopping agent | `nvidia/nemotron-3-super-120b-a12b` | Your request, the listings with category and seller, your bucket names | One product and one bucket, or a decline |
+| Second check | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | The request and the chosen product | Is this the requested item: yes or no |
+| Screen (need buckets) | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, escalating to `nvidia/Nemotron-3-Ultra-550b-a55b` when contested | The purchase and your spending history | Need or want, with a reason and a question |
+
+**What no model can do.** Model outputs are a product number, a bucket id, a yes or no, and a
+need-or-want word. Code turns those into a decision and into PayPal calls. No model holds a tool
+that captures or voids, none can create a bucket or change its tag, and a model's opinion can add
+a hold but never remove one. A check in the test suite fails the build if anything from the AI
+engine appears in the payments module's import graph.
+
+**Product search:** [Channel3](https://trychannel3.com) (`POST /v1/search`), with your price
+ceiling passed as a filter.
+
+---
+
+## Check it without trusting us
+
+- **The ledger** at [`/ledger`](https://bucket-paypal.jason-wold.workers.dev/ledger) lists every
+  hold the demo has placed, with PayPal's authorization id, the bucket, and the outcome
+  (captured, released by the person, released by the clock). Released holds stay on the list.
+  The same data is JSON at `/api/ledger`. Rows carry no visitor identifier.
+- **Declines show their work.** When the agent buys nothing, the card lists every listing it
+  looked at, with price, seller and category, so you can judge the decline yourself.
+- **The tests are the claims.** Each thing the demo video says about money is a check:
 
 ```bash
+npm run check:payments   # 38 checks: holds, keep, let go, races, expiry, reconciliation, the AI boundary
+npm run check:shop       # 40 checks: agent, second check, screen, rule, declines, injected catalog text
+```
+
+Both run against fakes that answer with the shapes the real services returned. To run the same
+code against the real sandbox: `npm run probe:paypal` and `npm run probe:shop`.
+
+---
+
+## Run it yourself
+
+Needs Node 20+, a PayPal sandbox app, a Nebius Token Factory key and a Channel3 key.
+
+```bash
+git clone -b paypal https://github.com/woadi-vector/bucket.git
+cd bucket
 npm install
-cp .dev.vars.example .dev.vars    # then set NEBIUS_API_KEY
-npm run dev                       # http://localhost:8080
+cp .dev.vars.example .dev.vars   # then fill in the values it lists
+npm run check:payments           # no keys needed
+npm run check:shop               # no keys needed
+npm run dev                      # http://localhost:8080
 ```
 
-`.dev.vars` is gitignored. Without a key the app still runs — the engine degrades to agreeing
-with you rather than failing.
+**PayPal sandbox setup.** In developer.paypal.com (Sandbox), create an app and turn on **Save
+payment methods** before anything requests a token. PayPal reuses a token for hours and its
+permissions are fixed when it is issued, so a token issued before the feature was on never gains
+it. Then save a sandbox buyer's wallet once and put its payment token id in
+`PAYPAL_DEMO_VAULT_ID`. The full story, including how this cost a morning, is in
+[`docs/paypal-findings.md`](docs/paypal-findings.md).
 
-> **Note:** `.dev.vars` is a Wrangler file, and `npm run dev` is a plain Node Vite server with no
-> Workers runtime, so it does not read that file on its own. A dev-only Vite plugin in
-> `vite.config.ts` loads it into `process.env`. It deliberately does not go through `define` or
-> `import.meta.env`, either of which would inline the secret into the client bundle.
+Deploying to Cloudflare Workers: [`docs/deploy-paypal.md`](docs/deploy-paypal.md).
 
-### Designing without a key
+---
 
-Without a key the engine falls back to a stub that agrees with you and reports zero confidence.
-That is deliberate — a stub that invented disagreement would be indistinguishable from a working
-model on screen — but it also means the screens that matter most are unreachable.
+## Stack
 
-Scenario markers are the exception. Put one in a purchase's label or note and the stub is forced:
+TanStack Start and React on Cloudflare Workers, with D1 for buckets and holds. PayPal Orders v2,
+Payments v2 and Vault v3 (sandbox). NVIDIA Nemotron on Nebius Token Factory. Channel3 product
+search.
 
-| Marker    | Effect                                                             |
-| --------- | ------------------------------------------------------------------ |
-| `#want`   | Answers "want", whatever you tagged it                             |
-| `#need`   | Answers "need", whatever you tagged it                             |
-| `#low`    | With a forced verdict, confidence 0.25                             |
-| `#high`   | With a forced verdict, confidence 0.95                             |
-| `#accept` | In an explanation: the stub accepts it and comes round to your tag |
+## Team
 
-```
-Headphones #want          tagged need → contested at 0.7, with a question
-Headphones #want #low     the same, hedged
-Groceries #need #high     tagged need → agreed at 0.95
-```
-
-Then answer the question. A plain answer is held; add `#accept` and it lands.
-
-The marker stays visible in the label on screen, and the reasoning text begins `STUB SCENARIO` and
-names the marker that caused it, so a forced answer can never be mistaken for a real one in a demo.
-Nothing escalates off a forced disagreement either — `judgeTransaction` short-circuits when the
-screening tier is `stub`, so the expensive tier is never reached and no spend is possible. Markers
-do nothing once a real adapter is configured.
-
-### Looking things up
-
-The weakest moment in Bucket is the one where someone says "the old one broke, I need this."
-Nothing in a model's weights knows whether that particular thing can be fixed for a tenth of
-the price. So when a person explains themselves, the second pass can search first, and the
-expensive tier weighs the explanation against what came back.
-
-Two properties hold, and both are enforced by `npm run check:engine`:
-
-**A lookup can only ever add a fact.** No key, no sensible query, an empty result, a provider
-error and a timeout past four seconds are all the same outcome: the verdict is decided the way
-it was before any of this existed. Nothing turns into a harsher answer because a third party
-was slow, and nothing records "searched, 0 results" as though something had been learned.
-
-**The person's explanation is never sent.** It is the most personal text in the app. Only two
-things leave: the purchase label they already typed, and a single yes/no read on whether their
-explanation mentions something failing, which picks between a repair query and a price query.
-That read is a keyword test rather than a model call for the same reason. An unusual phrasing
-therefore picks the broader query, which is a worse search and not a leak.
-
-A cheaper option existing is also not a verdict. The prompt says so: people decline repairs
-for reasons that are none of the model's business, results can be stale or about a different
-model of the thing, and finding nothing is never a point against the person.
-
-`TAVILY_API_KEY` turns it on (see `.dev.vars.example`). Because the integration is built to
-fail quietly, there is a loud way to check it:
-
-```bash
-npm run probe:tavily
-npm run probe:tavily "sony wh-1000xm4 earpad replacement cost"
-```
-
-That calls Tavily once for real, prints the status and body, and names any field the app reads
-that did not arrive. One credit per run.
-
-### The exchange log
-
-Every purchase the model contested is recorded: the tag, the verdict, the question, the
-person's answer, whatever was looked up, and whether that answer changed the verdict. `/exchanges?key=...` shows them
-newest first, with the counts behind the only claim here worth checking, which is how often a
-challenge survived contact with the person's reasoning.
-
-Nothing is filtered. The challenges that collapsed as soon as someone explained themselves sit
-beside the ones that held, because a rate you can only see the good half of is not evidence.
-Rows where a fallback answered rather than a model are flagged `degraded` and excluded from
-both rates rather than quietly improving them.
-
-The page needs `EXCHANGES_KEY` set (see `.dev.vars.example`). Unset means closed, so the log
-cannot be published by forgetting to configure something. The rest of the app has no login
-on purpose; this page holds what people typed about their own spending, so it cannot.
-
-### Checking the engine
-
-```bash
-npm run check:engine
-```
-
-Bundles `src/engine` on its own and runs `judgeTransaction` against fake adapters: the global
-spend ceiling, escalation, and failing closed. It never calls Token Factory and needs no key.
-`fetch` is replaced with one that throws, so a stray network call fails the run instead of
-spending. One `[engine] ceiling check threw` error line in the output is expected.
-
-```bash
-npm run check:exchanges
-```
-
-Checks the arithmetic behind `/exchanges`: which rows are excluded from the rates, what the
-denominator is, that a degraded second pass taints the whole exchange, that a reconsideration
-arriving without its challenge id is still recorded, and that the log stays closed when
-`EXCHANGES_KEY` is unset. Runs against the in-memory store, so it covers the semantics and not
-the SQL; the SQL aggregate applies the same rules and is exercised against Miniflare below.
-Two `EXCHANGES_KEY is not set` warnings in the output are expected.
-
-### Against the real Workers runtime
-
-`npm run dev` has no D1 binding and no Workers `env` — state falls back to an in-memory store. To
-exercise the real thing locally (no Cloudflare account needed, Miniflare simulates D1):
-
-```bash
-npm run build
-npm run db:migrate      # applies migrations to the local D1
-npx wrangler dev --local
-```
-
-The `db:*` scripts all pass `--config wrangler.jsonc` deliberately: after a build, wrangler
-otherwise follows `.wrangler/deploy/config.json` to the generated config and silently applies no
-migrations at all.
-
-### Deploying
-
-See **[docs/deploy.md](docs/deploy.md)**.
-
-## How it is built
-
-TanStack Start + React 19 + Vite 7 + Tailwind 4, deployed to Cloudflare Workers via Nitro.
-Per-visitor state persists in D1, keyed by an opaque `HttpOnly` cookie — **no login**, because a
-judge should be able to open the URL and use it. Refresh and your data is there; a private window
-gets a fresh seeded app.
-
-| path                     | what it is                                                   |
-| ------------------------ | ------------------------------------------------------------ |
-| `src/engine/`            | the verdict engine — standalone, no app imports              |
-| `src/lib/bucket/`        | store: pure reducer, provider, persistence, server functions |
-| `src/lib/server/`        | session cookie, D1 store, spend ledger and budget guard      |
-| `src/components/bucket/` | the product surfaces, including the retraction moment        |
-| `migrations/`            | D1 schema                                                    |
-| `docs/`                  | Token Factory findings, deploy runbook                       |
-
-**Spend is capped.** The demo URL has no login, so anyone can trigger paid inference. A ledger in
-D1 records every call with its tokens and cost. Before each Token Factory call the engine checks a
-**global ceiling** on total verdicts, tokens and estimated dollars across all sessions — configured
-as Wrangler vars (`GLOBAL_VERDICT_LIMIT`, `GLOBAL_TOKEN_LIMIT`, `GLOBAL_USD_LIMIT`), so it can be
-changed without a code edit. Once any limit is reached, the model is no longer called and the app
-serves a cached verdict clearly marked as such, while staying fully usable. It fails closed: if the
-ledger cannot be read, it serves the cached verdict rather than risk unmetered spend. Per-session
-caps sit alongside it. See [docs/deploy.md](docs/deploy.md#budget) and
-[`src/lib/server/budget.ts`](src/lib/server/budget.ts).
+Jason Wold (build) and Melissa Stone (concept; Bucket is her idea, and the pain-of-paying framing
+from Prelec and Loewenstein, 1998, that explains why it works).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
