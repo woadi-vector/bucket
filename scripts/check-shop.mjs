@@ -26,16 +26,41 @@ const check = (name, cond, detail = "") => {
 // --- Fakes ------------------------------------------------------------------------------------
 
 const catalog = [
-  { id: "p1", title: "Trail running shoes", brand: "Stride", price: 89.0 },
-  { id: "p2", title: "Road running shoes", brand: "Pace", price: 64.5 },
-  { id: "p3", title: "Organic oat milk, 6 pack", brand: "Oatly", price: 18.99 },
-  { id: "p4", title: "Premium carbon racing shoes", brand: "Apex", price: 249.0 },
+  {
+    id: "p1",
+    title: "Trail running shoes",
+    brand: "Stride",
+    price: 89.0,
+    category: "Apparel > Shoes",
+  },
+  {
+    id: "p2",
+    title: "Road running shoes",
+    brand: "Pace",
+    price: 64.5,
+    category: "Apparel > Shoes",
+  },
+  {
+    id: "p3",
+    title: "Organic oat milk, 6 pack",
+    brand: "Oatly",
+    price: 18.99,
+    category: "Food > Dairy Alternatives",
+  },
+  {
+    id: "p4",
+    title: "Premium carbon racing shoes",
+    brand: "Apex",
+    price: 249.0,
+    category: "Apparel > Shoes",
+  },
 ];
 
 const fake = {
   agentAnswer: null, // string the "agent" model returns; null means pick per test default
   screenVerdict: "need", // what the screening model says about a need-bucket purchase
   agentPrompts: [],
+  screenPrompts: [],
   paypalCalls: [],
   channel3Bodies: [],
 };
@@ -67,6 +92,7 @@ globalThis.fetch = async (url, init = {}) => {
         id: p.id,
         title: p.title,
         brands: [{ id: p.brand, name: p.brand }],
+        category: p.category ? { slug: "x", title: p.category, path: p.category } : null,
         images: [{ url: `https://img.example/${p.id}.jpg`, is_main_image: true }],
         offers: [
           {
@@ -82,6 +108,7 @@ globalThis.fetch = async (url, init = {}) => {
 
   if (u.host === "api.tokenfactory.nebius.com") {
     const system = body.messages[0].content;
+    if (!/shopping agent/.test(system)) fake.screenPrompts.push(body.messages);
     if (/shopping agent/.test(system)) {
       fake.agentPrompts.push(body.messages);
       const content =
@@ -152,6 +179,7 @@ const reset = () => {
   fake.agentAnswer = null;
   fake.screenVerdict = "need";
   fake.agentPrompts = [];
+  fake.screenPrompts = [];
   fake.paypalCalls = [];
   fake.channel3Bodies = [];
 };
@@ -270,6 +298,52 @@ fake.agentAnswer = '{"choice": 7, "bucketId": "b5", "reason": "Out of range."}';
   check(
     "a product number off the list is rejected",
     r.ok && r.agent.degraded && r.product.id === "p1",
+  );
+}
+
+// The agent can turn down a list with nothing on it that is what was asked for.
+reset();
+catalog.unshift({
+  id: "cream",
+  title: "Breakfast Lovers Kit 1 Oat Milk",
+  brand: "Glow",
+  price: 20,
+  category: "Beauty > Skin Care",
+});
+fake.agentAnswer =
+  '{"choice": null, "reason": "The only oat milk listed is a skin care kit, not a drink."}';
+{
+  const r = await run("oat milk", 2000);
+  check(
+    "the agent can decline a near-match",
+    !r.ok && r.reason === "declined",
+    r.ok ? "bought" : r.reason,
+  );
+  check("a decline places no hold", fake.paypalCalls.length === 0, fake.paypalCalls.join(" | "));
+  check("and says how many it looked at", !r.ok && r.considered === 2);
+  const user = fake.agentPrompts[0]?.[1]?.content ?? "";
+  check("the agent sees each product's category", user.includes("category: Beauty > Skin Care"));
+}
+catalog.shift();
+
+// A bare null with no reason is not a decline; it falls back like any unusable answer.
+reset();
+fake.agentAnswer = '{"choice": null}';
+{
+  const r = await run("running shoes", 9000);
+  check("a decline with no reason is treated as unusable", r.ok && r.agent.degraded);
+}
+
+// The screen sees the category too, labeled as context rather than the person's words.
+reset();
+fake.agentAnswer = '{"choice": 0, "bucketId": "b1", "reason": "Groceries."}';
+{
+  await run("oat milk", 2000);
+  const screenText = (fake.screenPrompts[0] ?? []).map((m) => m.content).join("\n");
+  check(
+    "the screen gets the category as context, not as something the person said",
+    /Context, not from the person: .*Food > Dairy Alternatives/.test(screenText) &&
+      !/They added: .*Dairy/.test(screenText),
   );
 }
 

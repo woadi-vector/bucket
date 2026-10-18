@@ -94,6 +94,12 @@ await store.getStore().save(sessionId, persistence.createSeededState());
 console.log(`Shopping for "${request}" under $${maxDollars.toFixed(2)}...\n`);
 const r = await shop.runShop({ sessionId, request, maxPriceCents: Math.round(maxDollars * 100) });
 
+if (!r.ok && r.reason === "declined") {
+  console.log(`Considered   ${r.considered} products from Channel3`);
+  console.log(`Declined     ${r.message}`);
+  console.log("\nThe agent looked and bought nothing. Nothing reached PayPal.");
+  process.exit(0);
+}
 if (!r.ok) {
   console.log(`FAIL  ${r.reason}: ${r.message}`);
   process.exit(1);
@@ -104,6 +110,7 @@ console.log(`Considered   ${r.considered} products from Channel3`);
 console.log(
   `Chose        ${r.product.title} (${dollars(r.product.priceCents)}, ${r.product.merchant})`,
 );
+console.log(`Category     ${r.product.category ?? "(none from Channel3)"}`);
 console.log(`Agent        ${r.agent.degraded ? "[fallback] " : ""}${r.agent.reason}`);
 console.log(
   `Filed under  ${r.bucket.name} (a ${r.bucket.tag}, holds at ${dollars(r.bucket.holdThresholdCents)})`,

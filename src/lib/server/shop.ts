@@ -68,8 +68,16 @@ export type ShopResult =
     }
   | {
       ok: false;
-      reason: "no-results" | "no-buckets" | "not-configured" | "search-failed" | "paypal-failed";
+      reason:
+        | "no-results"
+        | "declined"
+        | "no-buckets"
+        | "not-configured"
+        | "search-failed"
+        | "paypal-failed";
       message: string;
+      /** How many catalog results the agent looked at before declining. */
+      considered?: number;
     };
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
@@ -141,6 +149,11 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
   );
   await recordUsage({ sessionId, telemetry: choice.telemetry, agreed: true });
 
+  // The agent looked and found nothing that is what was asked for. Nothing reaches PayPal.
+  if (choice.declined) {
+    return { ok: false, reason: "declined", message: choice.reason, considered: products.length };
+  }
+
   const product = products[choice.productIndex];
   const bucket = buckets.find((b) => b.id === choice.bucketId) ?? wantBucket;
   const tag = resolveBucketTag(bucket);
@@ -207,7 +220,10 @@ async function screenPurchase(
       intent: "need",
       readinessTag: null,
       bucketName: bucket.name,
-      note: `Bought by a shopping agent from ${product.merchant}.`,
+      // The category is what tells "oat milk" the drink from "oat milk" the face cream.
+      context: `Bought by a shopping agent from ${product.merchant}.${
+        product.category ? ` Catalog category: ${product.category}.` : ""
+      }`,
     },
     history: (state?.transactions ?? []).slice(0, 50).map((t) => ({
       amount: t.amount,

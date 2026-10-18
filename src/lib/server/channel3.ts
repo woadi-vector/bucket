@@ -36,6 +36,8 @@ export type ProductOption = {
   id: string;
   title: string;
   brand: string | null;
+  /** The catalog's category path, e.g. "Beauty > Skin Care". Null when Channel3 has none. */
+  category: string | null;
   /** Integer cents, from the cheapest in-stock USD offer. */
   priceCents: number;
   merchant: string;
@@ -47,6 +49,7 @@ type RawProduct = {
   id?: string;
   title?: string;
   brands?: { name?: string }[];
+  category?: { title?: string; path?: string | string[] } | null;
   images?: { url?: string; is_main_image?: boolean }[];
   offers?: {
     url?: string;
@@ -57,6 +60,15 @@ type RawProduct = {
 };
 
 const clip = (s: string, n: number) => s.replace(/\s+/g, " ").trim().slice(0, n);
+
+/** Channel3's category as one readable line. The path's shape is not pinned down, so take either. */
+function categoryOf(p: RawProduct): string | null {
+  const c = p.category;
+  if (!c) return null;
+  const path = Array.isArray(c.path) ? c.path.join(" > ") : c.path;
+  const text = path || c.title;
+  return text ? clip(String(text), 120) : null;
+}
 
 /** Flattens Channel3 products to one option each, dropping anything without a USD price. */
 export function toOptions(products: RawProduct[]): ProductOption[] {
@@ -79,6 +91,7 @@ export function toOptions(products: RawProduct[]): ProductOption[] {
       id: clip(p.id, 80),
       title: clip(p.title, 140),
       brand: p.brands?.[0]?.name ? clip(p.brands[0].name, 60) : null,
+      category: categoryOf(p),
       priceCents: Math.round((best.price!.price as number) * 100),
       merchant: clip(best.domain as string, 80),
       url: (best.url as string).slice(0, 500),

@@ -22,6 +22,11 @@ export type PurchaseUnderReview = {
   bucketName?: string;
   /** Anything extra the user offered about why they are buying it. */
   note?: string;
+  /**
+   * Facts about the purchase that did not come from the person: where it was bought, what the
+   * store catalog calls it. Shown to the model as context, never as something the person said.
+   */
+  context?: string;
 };
 
 /** One prior purchase. The engine never reads these from storage; callers pass them in. */
