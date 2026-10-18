@@ -9,6 +9,7 @@ import {
 import {
   resolveBucketTag,
   resolveHoldThreshold,
+  SAVINGS_BUCKET_ID,
   type Bucket,
   type BucketTag,
 } from "@/lib/bucket-store";
@@ -104,7 +105,11 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
   // The person's buckets come from their stored state, never from the browser, so a request
   // cannot invent a bucket or relabel a want as a need.
   const state = await getStore().load(sessionId);
-  const buckets: Bucket[] = (state?.buckets ?? []).filter((b) => b.ownerType === "self");
+  // The child's bucket is not the agent's to spend from, and neither is Savings: it is where
+  // let-go money lands, not a budget to buy out of.
+  const buckets: Bucket[] = (state?.buckets ?? []).filter(
+    (b) => b.ownerType === "self" && b.id !== SAVINGS_BUCKET_ID,
+  );
   // Where an unvalidated choice lands: the want bucket with the most money in it. A want
   // bucket so a fallback can never pass a purchase without the threshold check, and the
   // largest one because it is the likeliest general-purpose bucket.

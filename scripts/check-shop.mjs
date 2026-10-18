@@ -307,6 +307,7 @@ fake.agentAnswer = '{"choice": 0, "bucketId": "b3", "reason": "Kids."}';
   check("the child's bucket is not offered or accepted", r.ok && r.bucket.id !== "b3");
   const offered = fake.agentPrompts[0]?.[1]?.content ?? "";
   check("and is not in the list the agent sees", !offered.includes("b3"));
+  check("nor is Savings", !offered.includes("b4") && !offered.includes("Savings"));
 }
 
 // A product number off the list falls back too.
