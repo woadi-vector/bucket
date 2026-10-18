@@ -17,7 +17,9 @@
     "check:secrets": "node scripts/check-no-secret-in-bundle.mjs",
     "check:engine": "node scripts/check-engine.mjs",
     "check:exchanges": "node scripts/check-exchanges.mjs",
-    "probe:tavily": "node scripts/probe-tavily.mjs"
+    "probe:tavily": "node scripts/probe-tavily.mjs",
+    "check:payments": "node scripts/check-payments.mjs",
+    "probe:paypal": "node scripts/probe-paypal.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",

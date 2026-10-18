@@ -38,3 +38,25 @@ NEBIUS_API_KEY=
 #   npx wrangler secret put TAVILY_API_KEY
 #
 # TAVILY_API_KEY=
+
+# PayPal entry (the `paypal` branch). Sandbox credentials for the Bucket sandbox app, from
+# developer.paypal.com, Apps & Credentials, with the Sandbox toggle on. Turn on "Save payment
+# methods" BEFORE the app issues its first token: PayPal reuses a token for hours and its
+# permissions are fixed when it is issued. See docs/paypal-findings.md. In production:
+#
+#   npx wrangler secret put PAYPAL_CLIENT_ID
+#   npx wrangler secret put PAYPAL_CLIENT_SECRET
+#
+# PAYPAL_CLIENT_ID=
+# PAYPAL_CLIENT_SECRET=
+
+# The saved sandbox buyer wallet the demo pays from (a Vault payment token id). Lets judges try
+# the flow without logging into PayPal.
+# PAYPAL_DEMO_VAULT_ID=
+
+# Sandbox unless this is exactly "live". Leave it unset for the hackathon.
+# PAYPAL_ENV=
+
+# How long a want waits in Sleep On It, in minutes. 1440 (24 hours) by default; set a few minutes
+# for the demo so a hold can be watched expiring. Capped inside PayPal's 3-day honor period.
+# HOLD_WINDOW_MINUTES=1440
