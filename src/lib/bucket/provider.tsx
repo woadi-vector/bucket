@@ -27,7 +27,7 @@ import { requestVerdict } from "./verdict-fns";
 /** How long to wait after the last change before persisting. */
 const SAVE_DEBOUNCE_MS = 800;
 
-export type Tab = "buckets" | "pending" | "family";
+export type Tab = "buckets" | "pending" | "holds" | "family";
 
 export type Prefill = {
   amount: number;
@@ -103,6 +103,16 @@ export type BucketActions = {
   overrideVerdict: (transactionId: string) => void;
   /** Close the argument without answering it. It stays on the transaction. */
   dismissRetraction: () => void;
+  /**
+   * Records a purchase the shopping agent completed (PayPal captured it). The screen already ran
+   * on the server, so no verdict is requested here.
+   */
+  recordAgentPurchase: (data: PurchaseInput) => void;
+  /**
+   * The let-go for a PayPal hold: the coin flies to Savings once PayPal has voided the hold.
+   * Unlike {@link letItGo} there is no undo, because the void cannot be taken back.
+   */
+  celebrateLetGo: (amount: number, sourceRect?: DOMRect) => void;
   setTab: (tab: Tab) => void;
   setPurchaseOpen: (open: boolean) => void;
   setNewBucketOpen: (open: boolean) => void;
@@ -356,6 +366,52 @@ export function BucketProvider({
     });
   });
 
+  const recordAgentPurchase = useEvent((data: PurchaseInput) => {
+    dispatch({
+      type: "CONFIRM_PURCHASE",
+      transaction: {
+        id: crypto.randomUUID(),
+        amount: data.amount,
+        label: data.label,
+        bucketId: data.bucketId,
+        intent: data.intent,
+        timestamp: Date.now(),
+        readinessTag: data.readinessTag ?? null,
+        verdict: null,
+      },
+    });
+    pulse(data.bucketId);
+    if (data.intent === "need") playNeed();
+    else playWant();
+  });
+
+  const celebrateLetGo = useEvent((amount: number, sourceRect?: DOMRect) => {
+    const savingsEl = document.querySelector<HTMLElement>(
+      `[data-bucket-id="${SAVINGS_BUCKET_ID}"]`,
+    );
+    const fallback = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const from = sourceRect
+      ? { x: sourceRect.left + sourceRect.width / 2, y: sourceRect.top + sourceRect.height / 2 }
+      : fallback;
+    const target = savingsEl?.getBoundingClientRect();
+    const to = target
+      ? { x: target.left + target.width / 2, y: target.top + target.height / 2 }
+      : fallback;
+
+    patchUi({ flying: { key: Date.now(), amount, from, to } });
+    window.setTimeout(() => patchUi({ tab: "buckets" }), 100);
+    window.setTimeout(() => {
+      dispatch({ type: "CREDIT_SAVINGS", amount });
+      patchUi({ flying: null });
+      pulse(SAVINGS_BUCKET_ID);
+      playLetGo();
+    }, 720);
+    toast("Let it go", {
+      description: `${formatCurrency(amount)} released at PayPal → Savings`,
+      duration: 5000,
+    });
+  });
+
   const createParentRequest = useEvent(
     (data: { amount: number; label: string; bucketId: string }) => {
       dispatch({
@@ -484,6 +540,8 @@ export function BucketProvider({
       retractToTray,
       overrideVerdict,
       dismissRetraction,
+      recordAgentPurchase,
+      celebrateLetGo,
       setTab: (tab) => patchUi({ tab }),
       setPurchaseOpen: (purchaseOpen) => patchUi({ purchaseOpen }),
       setNewBucketOpen: (newBucketOpen) => patchUi({ newBucketOpen }),
@@ -511,6 +569,8 @@ export function BucketProvider({
       retractToTray,
       overrideVerdict,
       dismissRetraction,
+      recordAgentPurchase,
+      celebrateLetGo,
       patchUi,
     ],
   );

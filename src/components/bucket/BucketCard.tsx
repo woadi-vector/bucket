@@ -1,4 +1,4 @@
-import { Bucket, formatCurrency, resolveBucketIcon } from "@/lib/bucket-store";
+import { Bucket, formatCurrency, resolveBucketIcon, resolveBucketTag } from "@/lib/bucket-store";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -52,6 +52,13 @@ export function BucketCard({
             <h3 className="text-sm font-medium text-muted-foreground tracking-wide">
               {bucket.name}
             </h3>
+            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: `var(--${resolveBucketTag(bucket)})` }}
+              />
+              {resolveBucketTag(bucket)}
+            </span>
             {isChild && (
               <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-accent text-accent-foreground font-medium">
                 Kids

@@ -31,6 +31,9 @@ import { RetractionCard } from "@/components/bucket/RetractionCard";
 import { BucketProvider, useBucketActions, useBucketState } from "@/lib/bucket/provider";
 import { useDemo } from "@/lib/bucket/use-demo";
 import { loadBucketState } from "@/lib/bucket/server-fns";
+import { AgentShop } from "@/components/bucket/AgentShop";
+import { PayPalHolds } from "@/components/bucket/PayPalHolds";
+import { usePayPalHolds } from "@/lib/bucket/use-paypal-holds";
 
 export const Route = createFileRoute("/")({
   // Runs on the server for a cold load, so the page arrives already populated.
@@ -70,6 +73,8 @@ function Index() {
   } = useBucketState();
   const actions = useBucketActions();
   const demo = useDemo();
+  const paypal = usePayPalHolds();
+  const liveHolds = paypal.holds.filter((h) => h.state === "held").length;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -127,6 +132,12 @@ function Index() {
             <span className="text-base font-semibold tracking-tight">Bucket</span>
           </div>
           <div className="flex items-center gap-2">
+            <a
+              href="/ledger"
+              className="hidden sm:inline text-sm text-muted-foreground hover:text-foreground px-2"
+            >
+              Ledger
+            </a>
             <Button
               variant="outline"
               size="sm"
@@ -210,6 +221,22 @@ function Index() {
           </div>
         </section>
 
+        <AgentShop
+          onCaptured={(r) => {
+            actions.recordAgentPurchase({
+              amount: r.product.priceCents / 100,
+              label: r.product.title,
+              bucketId: r.bucket.id,
+              intent: r.bucket.tag,
+            });
+            void paypal.refresh();
+          }}
+          onHeld={() => {
+            void paypal.refresh();
+            actions.setTab("holds");
+          }}
+        />
+
         {trip && trip.items.length > 0 && (
           <button
             type="button"
@@ -258,6 +285,14 @@ function Index() {
                 </span>
               )}
             </TabBtn>
+            <TabBtn active={ui.tab === "holds"} onClick={() => actions.setTab("holds")}>
+              PayPal
+              {liveHolds > 0 && (
+                <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">
+                  {liveHolds}
+                </span>
+              )}
+            </TabBtn>
             <TabBtn active={ui.tab === "family"} onClick={() => actions.setTab("family")}>
               Family
               {parentRequests.some((r) => r.status === "pending") && (
@@ -291,6 +326,41 @@ function Index() {
                 buckets={buckets}
                 onConfirm={actions.confirmPending}
                 onLetGo={actions.letItGo}
+              />
+            )}
+            {ui.tab === "holds" && (
+              <PayPalHolds
+                holds={paypal.holds}
+                buckets={buckets}
+                busyId={paypal.busyId}
+                onExpire={() => void paypal.refresh()}
+                onKeep={async (h) => {
+                  const r = await paypal.decide(h.id, "keep");
+                  if (r.ok) {
+                    actions.recordAgentPurchase({
+                      amount: h.amountCents / 100,
+                      label: h.label,
+                      bucketId: h.bucketId,
+                      // The bucket's tag when the agent bought it, as PayPal's record has it.
+                      intent: h.bucketTag,
+                    });
+                  } else {
+                    toast(r.reason === "expired" ? "Time ran out" : "PayPal did not capture it", {
+                      description:
+                        r.reason === "expired"
+                          ? "The window closed, so the hold was released."
+                          : "The money is still held. Try again in a moment.",
+                    });
+                  }
+                }}
+                onLetGo={async (h, rect) => {
+                  const r = await paypal.decide(h.id, "letGo");
+                  if (r.ok) actions.celebrateLetGo(h.amountCents / 100, rect);
+                  else
+                    toast("PayPal did not release it", {
+                      description: "The money is still held. Try again in a moment.",
+                    });
+                }}
               />
             )}
             {ui.tab === "family" && (
