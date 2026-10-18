@@ -104,32 +104,36 @@ if (!r.ok && r.reason === "declined") {
     );
   }
   console.log("\nThe agent looked and bought nothing. Nothing reached PayPal.");
-  process.exit(0);
-}
-if (!r.ok) {
+} else if (!r.ok) {
   console.log(`FAIL  ${r.reason}: ${r.message}`);
-  process.exit(1);
+  // exitCode rather than process.exit(): on Windows, exiting while fetch still holds open
+  // sockets trips a libuv assertion (UV_HANDLE_CLOSING) after the output has printed.
+  process.exitCode = 1;
+} else {
+  await report(r);
 }
 
-const dollars = (c) => `$${(c / 100).toFixed(2)}`;
-console.log(`Considered   ${r.considered} products from Channel3`);
-console.log(
-  `Chose        ${r.product.title} (${dollars(r.product.priceCents)}, ${r.product.merchant})`,
-);
-console.log(`Category     ${r.product.category ?? "(none from Channel3)"}`);
-console.log(`Agent        ${r.agent.degraded ? "[fallback] " : ""}${r.agent.reason}`);
-console.log(
-  `Filed under  ${r.bucket.name} (a ${r.bucket.tag}, holds at ${dollars(r.bucket.holdThresholdCents)})`,
-);
-console.log(
-  `Screen       ${r.screen.ran ? `${r.screen.agrees ? "agrees" : "doubts it"}: ${r.screen.reasoning || "(no reasoning)"}` : r.screen.why}`,
-);
-if (r.screen.ran && r.screen.question) console.log(`Would ask    ${r.screen.question}`);
-console.log(`Policy       ${r.policy.decision}: ${r.policy.reason}`);
-console.log(`PayPal       authorization ${r.hold.authorizationId}, now ${r.hold.state}`);
+async function report(r) {
+  const dollars = (c) => `$${(c / 100).toFixed(2)}`;
+  console.log(`Considered   ${r.considered} products from Channel3`);
+  console.log(
+    `Chose        ${r.product.title} (${dollars(r.product.priceCents)}, ${r.product.merchant})`,
+  );
+  console.log(`Category     ${r.product.category ?? "(none from Channel3)"}`);
+  console.log(`Agent        ${r.agent.degraded ? "[fallback] " : ""}${r.agent.reason}`);
+  console.log(
+    `Filed under  ${r.bucket.name} (a ${r.bucket.tag}, holds at ${dollars(r.bucket.holdThresholdCents)})`,
+  );
+  console.log(
+    `Screen       ${r.screen.ran ? `${r.screen.agrees ? "agrees" : "doubts it"}: ${r.screen.reasoning || "(no reasoning)"}` : r.screen.why}`,
+  );
+  if (r.screen.ran && r.screen.question) console.log(`Would ask    ${r.screen.question}`);
+  console.log(`Policy       ${r.policy.decision}: ${r.policy.reason}`);
+  console.log(`PayPal       authorization ${r.hold.authorizationId}, now ${r.hold.state}`);
 
-if (r.hold.state === "held") {
-  const released = await payments.letGo(r.hold.id, { decidedBy: "user" });
-  console.log(`Cleanup      let it go: ${released.ok ? released.hold.state : released.reason}`);
+  if (r.hold.state === "held") {
+    const released = await payments.letGo(r.hold.id, { decidedBy: "user" });
+    console.log(`Cleanup      let it go: ${released.ok ? released.hold.state : released.reason}`);
+  }
+  console.log("\nThe agent ran end to end against the real services.");
 }
-console.log("\nThe agent ran end to end against the real services.");
