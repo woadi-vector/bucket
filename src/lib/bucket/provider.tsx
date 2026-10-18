@@ -16,6 +16,7 @@ import {
   SAVINGS_BUCKET_ID,
   Trip,
   formatCurrency,
+  type BucketTag,
 } from "@/lib/bucket-store";
 import { useBucketSounds } from "@/lib/use-bucket-sounds";
 import { useEvent } from "@/lib/use-event";
@@ -91,7 +92,7 @@ export type BucketActions = {
   createParentRequest: (data: { amount: number; label: string; bucketId: string }) => void;
   approveRequest: (id: string) => void;
   denyRequest: (id: string) => void;
-  createBucket: (name: string, amount: number) => void;
+  createBucket: (name: string, amount: number, tag?: BucketTag) => void;
   setChildLimit: (value: string) => void;
   setTrip: (trip: Trip | null) => void;
   completeTrip: (checkedTotal: number) => void;
@@ -387,7 +388,7 @@ export function BucketProvider({
     dispatch({ type: "PARENT_REQUEST_RESOLVE", id, status: "denied" });
   });
 
-  const createBucket = useEvent((name: string, amount: number) => {
+  const createBucket = useEvent((name: string, amount: number, tag: BucketTag = "want") => {
     dispatch({
       type: "CREATE_BUCKET",
       bucket: {
@@ -398,6 +399,7 @@ export function BucketProvider({
         ownerType: "self",
         iconKey: DEFAULT_BUCKET_ICON_KEY,
         accent: DEFAULT_BUCKET_ACCENT,
+        tag,
       },
     });
   });

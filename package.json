@@ -19,7 +19,9 @@
     "check:exchanges": "node scripts/check-exchanges.mjs",
     "probe:tavily": "node scripts/probe-tavily.mjs",
     "check:payments": "node scripts/check-payments.mjs",
-    "probe:paypal": "node scripts/probe-paypal.mjs"
+    "probe:paypal": "node scripts/probe-paypal.mjs",
+    "check:shop": "node scripts/check-shop.mjs",
+    "probe:shop": "node scripts/probe-shop.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",

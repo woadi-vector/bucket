@@ -23,7 +23,7 @@ export class VerdictParseError extends Error {
  *     "the user said {need} but their history {shows}..." yields two junk spans before the
  *     real object, so the caller must be able to try each in turn.
  */
-function extractJsonCandidates(text: string): string[] {
+export function extractJsonCandidates(text: string): string[] {
   const candidates: string[] = [];
   let depth = 0;
   let start = -1;

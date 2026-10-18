@@ -446,3 +446,15 @@ function degradedVerdict(
     telemetry: { tier, model, adapter: adapterName, latencyMs, degraded: true },
   };
 }
+
+export {
+  chooseProduct,
+  buildShopPrompt,
+  parseShopChoice,
+  SHOP_MODEL,
+  type ShopRequest,
+  type ShopChoice,
+  type ShopProduct,
+  type ShopBucket,
+  type ShopOptions,
+} from "./shop";

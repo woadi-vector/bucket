@@ -60,3 +60,9 @@ NEBIUS_API_KEY=
 # How long a want waits in Sleep On It, in minutes. 1440 (24 hours) by default; set a few minutes
 # for the demo so a hold can be watched expiring. Capped inside PayPal's 3-day honor period.
 # HOLD_WINDOW_MINUTES=1440
+
+# Product search for the shopping agent, from trychannel3.com. In production:
+#
+#   npx wrangler secret put CHANNEL3_API_KEY
+#
+# CHANNEL3_API_KEY=

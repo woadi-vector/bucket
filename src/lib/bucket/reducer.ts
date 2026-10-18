@@ -1,5 +1,6 @@
 import {
   Bucket,
+  BucketTag,
   ParentRequest,
   PendingWant,
   PurchaseVerdict,
@@ -53,6 +54,7 @@ export type BucketAction =
   | { type: "CREDIT_SAVINGS"; amount: number }
   | { type: "DEBIT_SAVINGS"; amount: number }
   | { type: "CREATE_BUCKET"; bucket: Bucket }
+  | { type: "SET_BUCKET_TAG"; bucketId: string; tag: BucketTag; holdThreshold?: number | null }
   | { type: "SET_CHILD_LIMIT"; limit: number | null }
   | { type: "PARENT_REQUEST_CREATE"; request: ParentRequest }
   | { type: "PARENT_REQUEST_RESOLVE"; id: string; status: "approved" | "denied" }
@@ -131,6 +133,22 @@ export function bucketReducer(state: BucketState, action: BucketAction): BucketS
           ...state.startingBalances,
           [action.bucket.id]: action.bucket.balance,
         },
+      };
+
+    case "SET_BUCKET_TAG":
+      return {
+        ...state,
+        buckets: state.buckets.map((b) =>
+          b.id === action.bucketId
+            ? {
+                ...b,
+                tag: action.tag,
+                ...(action.holdThreshold !== undefined
+                  ? { holdThreshold: action.holdThreshold }
+                  : {}),
+              }
+            : b,
+        ),
       };
 
     case "SET_CHILD_LIMIT":

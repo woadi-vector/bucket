@@ -36,7 +36,11 @@ const isBucket = (v: unknown): v is Bucket =>
   typeof v.iconKey === "string" &&
   typeof v.accent === "string" &&
   (v.ownerType === "self" || v.ownerType === "child") &&
-  (v.limit === null || typeof v.limit === "number");
+  (v.limit === null || typeof v.limit === "number") &&
+  (v.tag === undefined || v.tag === "need" || v.tag === "want") &&
+  (v.holdThreshold === undefined ||
+    v.holdThreshold === null ||
+    (typeof v.holdThreshold === "number" && v.holdThreshold >= 0));
 
 const isTransaction = (v: unknown): v is Transaction =>
   isObject(v) &&

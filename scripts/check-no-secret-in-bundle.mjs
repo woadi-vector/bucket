@@ -21,6 +21,7 @@ const SECRET_NAMES = [
   "PAYPAL_CLIENT_SECRET",
   "PAYPAL_CLIENT_ID",
   "PAYPAL_DEMO_VAULT_ID",
+  "CHANNEL3_API_KEY",
 ];
 
 function loadSecrets() {

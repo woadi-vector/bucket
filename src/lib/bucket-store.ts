@@ -31,6 +31,13 @@ const BUCKET_ICONS: Record<BucketIconKey, LucideIcon> = {
 export const resolveBucketIcon = (key: BucketIconKey | undefined): LucideIcon =>
   (key && BUCKET_ICONS[key]) || BUCKET_ICONS.default;
 
+/**
+ * Whether a bucket holds needs or wants. The person decides this once, when they create the
+ * bucket, away from any purchase, and it becomes the line Bucket holds them to: a purchase
+ * filed under a need passes unless it reads like a want; a want over the threshold waits.
+ */
+export type BucketTag = "need" | "want";
+
 export type Bucket = {
   id: string;
   name: string;
@@ -40,7 +47,32 @@ export type Bucket = {
   iconKey: BucketIconKey;
   /** Soft accent token, used as background tint for the icon chip. */
   accent: string;
+  /**
+   * Optional so state saved before tags existed still loads. Read it through
+   * {@link resolveBucketTag}, never directly, so an old bucket gets a sensible default.
+   */
+  tag?: BucketTag;
+  /** Wants at or above this many dollars wait in Sleep On It. Unset means SLEEP_THRESHOLD. */
+  holdThreshold?: number | null;
 };
+
+/** Default tag for a bucket saved before tags existed, by what its icon says it is for. */
+const DEFAULT_TAG_BY_ICON: Record<BucketIconKey, BucketTag> = {
+  groceries: "need",
+  kids: "need",
+  savings: "need",
+  dining: "want",
+  default: "want",
+};
+
+export const resolveBucketTag = (bucket: Pick<Bucket, "tag" | "iconKey">): BucketTag =>
+  bucket.tag ?? DEFAULT_TAG_BY_ICON[bucket.iconKey] ?? "want";
+
+/** The bucket's own hold threshold in dollars, or the app default. */
+export const resolveHoldThreshold = (bucket: Pick<Bucket, "holdThreshold">): number =>
+  typeof bucket.holdThreshold === "number" && bucket.holdThreshold >= 0
+    ? bucket.holdThreshold
+    : SLEEP_THRESHOLD;
 
 /** How a person answered a contested tag. Bucket advises; this is them deciding. */
 export type VerdictResponse = "retracted" | "overridden";
@@ -132,6 +164,7 @@ export const initialBuckets: Bucket[] = [
     ownerType: "self",
     iconKey: "groceries",
     accent: "oklch(0.92 0.04 145)",
+    tag: "need",
   },
   {
     id: "b2",
@@ -141,6 +174,7 @@ export const initialBuckets: Bucket[] = [
     ownerType: "self",
     iconKey: "dining",
     accent: "oklch(0.93 0.045 65)",
+    tag: "want",
   },
   {
     id: "b3",
@@ -150,6 +184,7 @@ export const initialBuckets: Bucket[] = [
     ownerType: "child",
     iconKey: "kids",
     accent: "oklch(0.92 0.05 35)",
+    tag: "need",
   },
   {
     id: "b4",
@@ -159,6 +194,19 @@ export const initialBuckets: Bucket[] = [
     ownerType: "self",
     iconKey: "savings",
     accent: "oklch(0.91 0.05 195)",
+    tag: "need",
+  },
+  {
+    // Where the shopping agent files gear, gadgets and clothes. A want bucket, so anything
+    // over its threshold waits in Sleep On It as a live PayPal hold.
+    id: "b5",
+    name: "Gear & Fun",
+    balance: 150,
+    limit: null,
+    ownerType: "self",
+    iconKey: "default",
+    accent: "oklch(0.93 0.03 280)",
+    tag: "want",
   },
 ];
 

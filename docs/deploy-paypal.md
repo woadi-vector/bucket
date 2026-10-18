@@ -55,13 +55,14 @@ npx wrangler secret put PAYPAL_CLIENT_ID
 npx wrangler secret put PAYPAL_CLIENT_SECRET
 npx wrangler secret put PAYPAL_DEMO_VAULT_ID
 npx wrangler secret put NEBIUS_API_KEY
+npx wrangler secret put CHANNEL3_API_KEY
 ```
 
 Use the sandbox app whose "Save payment methods" was on before its first token
 (`bucket-sandbox-3`); see [paypal-findings.md](paypal-findings.md). `PAYPAL_DEMO_VAULT_ID` is the
 saved sandbox wallet's payment token.
 
-_Check:_ `npx wrangler secret list` shows all four names.
+_Check:_ `npx wrangler secret list` shows all five names.
 
 ## 4. Deploy
 
