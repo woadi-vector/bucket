@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useRef } from "react";
 import { formatCurrency } from "@/lib/bucket-store";
 import { BucketCard } from "@/components/bucket/BucketCard";
@@ -455,6 +455,32 @@ function Index() {
             </ul>
           </section>
         )}
+
+        {/*
+          The way in to the evidence.
+
+          Both pages existed before this footer and neither was reachable from the app, which
+          made them documentation rather than something a visitor could check. Kept small and
+          last: anyone using Bucket to decide on a purchase does not need it, and anyone
+          wondering whether the numbers are real needs exactly it.
+        */}
+        <footer className="mt-12 mb-4 border-t border-border pt-5 text-xs text-muted-foreground">
+          <p>
+            Bucket runs two models and keeps a record of both.{" "}
+            <Link to="/efficiency" className="underline underline-offset-2 hover:text-foreground">
+              What it spent
+            </Link>{" "}
+            is open to anyone.{" "}
+            <Link
+              to="/exchanges"
+              search={{ key: undefined }}
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              What it argued about
+            </Link>{" "}
+            needs a key, because it holds what people typed.
+          </p>
+        </footer>
       </div>
 
       <PurchaseFlow

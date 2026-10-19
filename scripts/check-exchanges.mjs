@@ -352,7 +352,10 @@ const contested = (over = {}) => ({
   const s = await readExchangeSummary();
   check("withheld: the split adds up", s.spoken + s.overruled + s.unsure === s.challenges);
   check("withheld: one spoken, one unsure", s.spoken === 1 && s.unsure === 1);
-  check("withheld: a spoken row carries no reason", rows.some((r) => r.withheldReason === null));
+  check(
+    "withheld: a spoken row carries no reason",
+    rows.some((r) => r.withheldReason === null),
+  );
 }
 
 // 10. The guard itself.

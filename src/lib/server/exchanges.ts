@@ -345,6 +345,23 @@ const EMPTY_SUMMARY: ExchangeSummary = {
  * challenge did not survive contact with the person's reasoning. Publishing the components
  * rather than the percentage leaves the arithmetic to whoever is checking it.
  */
+/**
+ * Just the silences, for the public efficiency panel.
+ *
+ * Separate from {@link readExchangeSummary} because of who reads it. That one feeds a page
+ * behind a key, and widening its use would mean deciding case by case which of its fields are
+ * safe to publish. This returns three integers and can never return anything else, so it
+ * cannot leak a purchase label or somebody's explanation no matter how it is called.
+ */
+export async function readRestraintCounts(): Promise<{
+  spoken: number;
+  overruled: number;
+  unsure: number;
+}> {
+  const { spoken, overruled, unsure } = await readExchangeSummary();
+  return { spoken, overruled, unsure };
+}
+
 export async function readExchangeSummary(): Promise<ExchangeSummary> {
   const db = getDb();
   if (!db) {
