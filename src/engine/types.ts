@@ -125,6 +125,26 @@ export type VerdictTelemetry = {
 export type CeilingStatus = { reached: false } | { reached: true; reason: string };
 
 /**
+ * Why Bucket held a disagreement back rather than saying it out loud.
+ *
+ * Its presence on a {@link Verdict} means the person was never shown the argument. Its
+ * absence means Bucket spoke. See `restraint.ts` for which silences are earned and why the
+ * two reasons are not equally strong.
+ */
+export type Withheld = {
+  reason: "overruled" | "unsure";
+  /** The verdict Bucket did not say out loud. */
+  verdict: Intent;
+  /** The confidence behind that unspoken verdict, as the model reported it. */
+  confidence: number;
+  /**
+   * The argument itself, kept so the log holds the case that was dropped rather than only
+   * the fact that one was. A silence nobody can read is not evidence of restraint.
+   */
+  reasoning: string;
+};
+
+/**
  * The engine's output. The first four fields are the contract named in the plan and must
  * not change shape when the stub is replaced by a real model call in Phase 3.
  */
@@ -157,5 +177,13 @@ export type Verdict = {
    * contradict itself, and this one decides what the person sees.
    */
   explanationAccepted?: boolean;
+  /**
+   * Set when Bucket disagreed and decided not to say so.
+   *
+   * Deliberately separate from `agrees`, which keeps reporting the disagreement honestly.
+   * Collapsing the two would make a withheld contest indistinguishable from an agreement,
+   * and the whole point of recording this is that the silences can be counted.
+   */
+  withheld?: Withheld;
   telemetry?: VerdictTelemetry;
 };

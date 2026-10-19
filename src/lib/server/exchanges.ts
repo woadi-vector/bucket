@@ -27,6 +27,17 @@ export type ExchangeRow = {
   finalConfidence: number | null;
   finalReasoning: string | null;
   explanationAccepted: number | null;
+  /**
+   * Why Bucket kept this disagreement to itself, or null when it said it out loud.
+   *
+   * `overruled` means the expensive tier sided with the person against the cheap one, in
+   * which case the `screening_*` columns hold the contest that was dropped and
+   * `overruled_*` holds the answer that beat it. `unsure` means the contest stood but fell
+   * under the confidence floor.
+   */
+  withheldReason: "overruled" | "unsure" | null;
+  overruledVerdict: Intent | null;
+  overruledReasoning: string | null;
   /** What was looked up before the second pass, when anything was. Null means no lookup. */
   evidenceProvider: string | null;
   evidenceQuery: string | null;
@@ -49,9 +60,15 @@ function devRows(): Map<string, ExchangeRow> {
 /**
  * Records a contested verdict and returns the row's id.
  *
- * Called only when the screening pass disagreed with the person's tag. An agreement is not
- * an exchange: there was nothing to discuss and recording it would pad the denominator with
- * cases where Bucket never spoke up.
+ * Called whenever the screening pass disagreed with the person's tag, whether or not Bucket
+ * went on to say so. A plain agreement is still not an exchange and is still not recorded:
+ * there was nothing to discuss, and counting it would pad the denominator with cases where
+ * Bucket never had an argument in the first place.
+ *
+ * The overruled rows are the reason this cannot simply key off the returned verdict. When
+ * the expensive tier takes the person's side, what comes back agrees with them, and reading
+ * only that would throw away the fact that the cheap tier objected first. So the contest is
+ * read from `verdict.withheld` when one is present and from the verdict itself otherwise.
  *
  * The id goes back to the browser so that an explanation can be attached to this exact
  * challenge later. It identifies a row, carries no session authority, and grants nothing:
@@ -65,6 +82,12 @@ export async function recordChallenge(args: {
   const { sessionId, request, verdict } = args;
   const { purchase } = request;
 
+  // The contest as it stood, which is the withheld one when there is one. An `unsure` row
+  // reads the same values either way; an `overruled` row would otherwise record the answer
+  // that won and lose the objection entirely.
+  const contest = verdict.withheld ?? verdict;
+  const overruled = verdict.withheld?.reason === "overruled";
+
   const row: ExchangeRow = {
     id: crypto.randomUUID(),
     amount: purchase.amount,
@@ -72,10 +95,16 @@ export async function recordChallenge(args: {
     bucketName: purchase.bucketName ?? null,
     readinessTag: purchase.readinessTag ?? null,
     userIntent: purchase.intent,
-    screeningVerdict: verdict.verdict,
-    screeningConfidence: verdict.confidence,
-    screeningReasoning: verdict.reasoning || null,
-    question: verdict.question ?? null,
+    screeningVerdict: contest.verdict,
+    screeningConfidence: contest.confidence,
+    screeningReasoning: contest.reasoning || null,
+    withheldReason: verdict.withheld?.reason ?? null,
+    // Only an overruled contest has an answer that beat it. Reading the returned verdict
+    // here on any other row would record Bucket arguing with itself.
+    overruledVerdict: overruled ? verdict.verdict : null,
+    overruledReasoning: overruled ? verdict.reasoning || null : null,
+    // A withheld contest was never put to the person, so there is no question to answer.
+    question: verdict.withheld ? null : (verdict.question ?? null),
     explanation: null,
     finalVerdict: null,
     finalConfidence: null,
@@ -104,8 +133,9 @@ export async function recordChallenge(args: {
         `INSERT INTO exchanges
            (id, session_id, amount, label, bucket_name, readiness_tag, user_intent,
             screening_verdict, screening_confidence, screening_reasoning, question,
+            withheld_reason, overruled_verdict, overruled_reasoning,
             degraded, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         row.id,
@@ -119,6 +149,9 @@ export async function recordChallenge(args: {
         row.screeningConfidence,
         row.screeningReasoning,
         row.question,
+        row.withheldReason,
+        row.overruledVerdict,
+        row.overruledReasoning,
         row.degraded,
         row.createdAt,
       )
@@ -165,6 +198,11 @@ export async function recordReconsideration(args: {
       screeningConfidence: 0,
       screeningReasoning: null,
       question: request.question || null,
+      // A reconsideration only exists because the person was asked something, so this
+      // reconstructed row is a contest Bucket voiced. Nothing was withheld.
+      withheldReason: null,
+      overruledVerdict: null,
+      overruledReasoning: null,
       explanation: null,
       finalVerdict: null,
       finalConfidence: null,
@@ -271,10 +309,16 @@ export async function recordReconsideration(args: {
 }
 
 export type ExchangeSummary = {
-  /** Every contested purchase, degraded rows included. */
+  /** Every contested purchase, degraded rows included, said out loud or not. */
   challenges: number;
   /** Challenges where a fallback answered rather than a model. Excluded from the rates. */
   degraded: number;
+  /** Contests Bucket actually put in front of the person. */
+  spoken: number;
+  /** Contests the expensive tier dropped by siding with the person against the cheap one. */
+  overruled: number;
+  /** Contests that stood but fell under the confidence floor, so went unsaid. */
+  unsure: number;
   /** Challenges the person answered. */
   answered: number;
   /** Answered challenges where the explanation moved Bucket back to the person's tag. */
@@ -286,6 +330,9 @@ export type ExchangeSummary = {
 const EMPTY_SUMMARY: ExchangeSummary = {
   challenges: 0,
   degraded: 0,
+  spoken: 0,
+  overruled: 0,
+  unsure: 0,
   answered: 0,
   accepted: 0,
   held: 0,
@@ -307,6 +354,9 @@ export async function readExchangeSummary(): Promise<ExchangeSummary> {
     return {
       challenges: rows.length,
       degraded: rows.length - real.length,
+      spoken: rows.filter((r) => r.withheldReason === null).length,
+      overruled: rows.filter((r) => r.withheldReason === "overruled").length,
+      unsure: rows.filter((r) => r.withheldReason === "unsure").length,
       answered: answered.length,
       accepted: answered.filter((r) => r.explanationAccepted === 1).length,
       held: answered.filter((r) => r.explanationAccepted === 0).length,
@@ -318,6 +368,12 @@ export async function readExchangeSummary(): Promise<ExchangeSummary> {
       .prepare(
         `SELECT COUNT(*)                                           AS challenges,
                 COALESCE(SUM(degraded), 0)                         AS degraded,
+                COALESCE(SUM(CASE WHEN withheld_reason IS NULL
+                                  THEN 1 ELSE 0 END), 0)           AS spoken,
+                COALESCE(SUM(CASE WHEN withheld_reason = 'overruled'
+                                  THEN 1 ELSE 0 END), 0)           AS overruled,
+                COALESCE(SUM(CASE WHEN withheld_reason = 'unsure'
+                                  THEN 1 ELSE 0 END), 0)           AS unsure,
                 COALESCE(SUM(CASE WHEN degraded = 0 AND answered_at IS NOT NULL
                                   THEN 1 ELSE 0 END), 0)           AS answered,
                 COALESCE(SUM(CASE WHEN degraded = 0 AND explanation_accepted = 1
@@ -358,6 +414,9 @@ export async function readExchanges(limit = 100): Promise<ExchangeRow[]> {
                 final_confidence     AS finalConfidence,
                 final_reasoning      AS finalReasoning,
                 explanation_accepted AS explanationAccepted,
+                withheld_reason      AS withheldReason,
+                overruled_verdict    AS overruledVerdict,
+                overruled_reasoning  AS overruledReasoning,
                 evidence_provider    AS evidenceProvider,
                 evidence_query       AS evidenceQuery,
                 evidence_results     AS evidenceResults,

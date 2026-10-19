@@ -271,7 +271,91 @@ const contested = (over = {}) => ({
   check("order: newest first", rows[0].label === "Second", rows.map((r) => r.label).join(" -> "));
 }
 
-// 9. The guard itself.
+// 9. The silences. A log that only held the objections Bucket voiced would describe an app
+//    that objects to everything, and the restraint would be a claim with nothing behind it.
+{
+  reset();
+
+  // Overruled: the cheap tier contested, the expensive tier sided with the person. What the
+  // engine hands over agrees with them, so a module keying off `agrees` would drop this row.
+  await recordChallenge({
+    sessionId: "s1",
+    request: purchase(),
+    verdict: {
+      agrees: true,
+      verdict: "need",
+      confidence: 0.9,
+      reasoning: "You were right, the old pair is gone.",
+      withheld: {
+        reason: "overruled",
+        verdict: "want",
+        confidence: 0.95,
+        reasoning: "You call comforts needs.",
+      },
+    },
+  });
+
+  const [row] = await readExchanges();
+  check("withheld: an overruled contest is still recorded", row !== undefined);
+  check("withheld: reason stored", row.withheldReason === "overruled");
+  check(
+    "withheld: the row holds the objection, not the answer that beat it",
+    row.screeningVerdict === "want" && row.screeningConfidence === 0.95,
+    `${row.screeningVerdict}@${row.screeningConfidence}`,
+  );
+  check(
+    "withheld: the objection's own words are kept",
+    row.screeningReasoning === "You call comforts needs.",
+  );
+  check(
+    "withheld: the answer that beat it is kept separately",
+    row.overruledVerdict === "need" && typeof row.overruledReasoning === "string",
+  );
+  check("withheld: nothing was asked", row.question === null);
+
+  const s = await readExchangeSummary();
+  check("withheld: counted as a disagreement", s.challenges === 1);
+  check("withheld: not counted as spoken", s.spoken === 0, `spoken=${s.spoken}`);
+  check("withheld: counted as overruled", s.overruled === 1);
+}
+
+{
+  reset();
+
+  // Unsure: the contest stood but fell under the floor. `agrees` stays false, so the honest
+  // disagreement is still on the record; it simply was never said.
+  await recordChallenge({
+    sessionId: "s1",
+    request: purchase(),
+    verdict: contested({
+      confidence: 0.7,
+      withheld: {
+        reason: "unsure",
+        verdict: "want",
+        confidence: 0.7,
+        reasoning: "You call comforts needs.",
+      },
+    }),
+  });
+  // And one Bucket actually said, so the split has both sides in it.
+  await recordChallenge({ sessionId: "s1", request: purchase(), verdict: contested() });
+
+  const rows = await readExchanges();
+  const quiet = rows.find((r) => r.withheldReason === "unsure");
+  check("withheld: an unsure contest is recorded", quiet !== undefined);
+  check("withheld: an unsure row asked nothing", quiet.question === null);
+  check(
+    "withheld: an unsure row has no overruling answer",
+    quiet.overruledVerdict === null && quiet.overruledReasoning === null,
+  );
+
+  const s = await readExchangeSummary();
+  check("withheld: the split adds up", s.spoken + s.overruled + s.unsure === s.challenges);
+  check("withheld: one spoken, one unsure", s.spoken === 1 && s.unsure === 1);
+  check("withheld: a spoken row carries no reason", rows.some((r) => r.withheldReason === null));
+}
+
+// 10. The guard itself.
 check("no network calls attempted", fetchAttempts === 0, `fetch=${fetchAttempts}`);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
