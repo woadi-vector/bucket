@@ -60,6 +60,15 @@ export type PurchaseVerdict = {
   reasoning: string;
   /** True when served from the global spend ceiling rather than by a model. */
   cached?: boolean;
+  /**
+   * True when Bucket disagreed and decided the disagreement was not worth saying.
+   *
+   * `agrees` still reports the disagreement, so this is what the difference between
+   * objecting and interrupting rests on. Nothing that could display the argument travels
+   * with it: `reasoning` arrives empty and there is no question. Treat it as a hard stop on
+   * surfacing anything, not as a style hint.
+   */
+  withheld?: boolean;
 };
 
 export type Transaction = {

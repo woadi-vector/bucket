@@ -211,6 +211,7 @@ export function BucketProvider({
               confidence: verdict.confidence,
               reasoning: verdict.reasoning,
               ...(verdict.cached ? { cached: true } : {}),
+              ...(verdict.withheld ? { withheld: true } : {}),
             },
           });
 
@@ -218,7 +219,17 @@ export function BucketProvider({
           // so its argument is shown on the card rather than in front of the person.
           // A cached verdict always agrees, but check explicitly: nothing canned may ever
           // raise an argument in front of someone.
-          if (!verdict.agrees && !verdict.cached && verdict.reasoning && kind === "transaction") {
+          //
+          // `withheld` is checked for its own sake rather than relying on the empty
+          // `reasoning` that comes with it. The two travel together today, and a silence
+          // that depended on that staying true would be one refactor from breaking.
+          if (
+            !verdict.agrees &&
+            !verdict.cached &&
+            !verdict.withheld &&
+            verdict.reasoning &&
+            kind === "transaction"
+          ) {
             patchUi({ retractionFor: subjectId });
           }
         })

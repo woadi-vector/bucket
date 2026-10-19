@@ -11,9 +11,13 @@ export const STUB_REASONING =
  * purchase `need` and writing `#want` produces a disagreement and raises the retraction
  * surface. `#low` and `#high` move the confidence the UI renders.
  *
- *   "Headphones #want"            → contests a `need` tag at 0.7
- *   "Headphones #want #low"       → the same, hedged at 0.25
+ *   "Headphones #want"            → contests a `need` tag at 0.85, loudly enough to be said
+ *   "Headphones #want #low"       → the same contest at 0.25, which Bucket keeps to itself
  *   "Groceries #need #high"       → agrees with a `need` tag at 0.95
+ *
+ * The forced confidence clears the floors in `restraint.ts` on purpose, so a marked purchase
+ * reaches the surface it was typed to design. `#low` is the one that does not, which makes it
+ * the way to walk the withheld path without an API key.
  *
  * Markers are read from the prompt text, so they must appear in the label or note the user
  * actually typed. They are a development affordance, not a feature: nothing else in the app
@@ -93,7 +97,7 @@ export function createStubAdapter(): ModelAdapter {
           ? 0.25
           : HIGH_CONFIDENCE.test(userMessage)
             ? 0.95
-            : 0.7;
+            : 0.85;
 
         return {
           text: JSON.stringify({

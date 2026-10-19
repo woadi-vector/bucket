@@ -479,7 +479,125 @@ const check = (name, cond, detail = "") => {
   }
 }
 
-// 10. The guard itself: nothing above touched the network.
+// 10. Restraint: disagreeing and saying so out loud are two separate decisions.
+{
+  const fixed = (verdict, confidence) => ({
+    name: "fixture",
+    async complete() {
+      return {
+        text: JSON.stringify({ verdict, confidence, reasoning: "Because." }),
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      };
+    },
+  });
+  const open = { canEscalate: () => true, checkCeiling: () => ({ reached: false }) };
+
+  // Same purchase, tagged the other way, so a verdict of "need" is the contest.
+  const wantTagged = {
+    purchase: { amount: 260, label: "Headphones", intent: "want", readinessTag: null },
+    history: [],
+  };
+
+  const loud = await judgeTransaction(request, { ...open, adapter: fixed("want", 0.9) });
+  check(
+    "restraint: a confident contest is spoken",
+    loud.agrees === false && loud.withheld === undefined,
+  );
+
+  const quiet = await judgeTransaction(request, { ...open, adapter: fixed("want", 0.7) });
+  check("restraint: a hedged contest is withheld", quiet.withheld?.reason === "unsure");
+  check("restraint: withholding never fakes agreement", quiet.agrees === false);
+  check(
+    "restraint: the unspoken verdict is recorded",
+    quiet.withheld?.verdict === "want" && quiet.withheld?.confidence === 0.7,
+  );
+
+  // The asymmetry: 0.7 is too hedged to call someone's need a want, but sure enough to
+  // tell them the thing they called a want was closer to a need.
+  const generous = await judgeTransaction(wantTagged, { ...open, adapter: fixed("need", 0.7) });
+  check(
+    "restraint: calling a want a need clears a lower floor",
+    generous.agrees === false && generous.withheld === undefined,
+  );
+  const coinflip = await judgeTransaction(wantTagged, { ...open, adapter: fixed("need", 0.5) });
+  check(
+    "restraint: a coin flip is withheld in either direction",
+    coinflip.withheld?.reason === "unsure",
+  );
+
+  const agreeing = await judgeTransaction(request, { ...open, adapter: fixed("need", 0.9) });
+  check(
+    "restraint: an agreement withholds nothing",
+    agreeing.agrees === true && agreeing.withheld === undefined,
+  );
+
+  const ceilinged = await judgeTransaction(request, {
+    adapter: fixed("want", 0.9),
+    canEscalate: () => true,
+    checkCeiling: () => ({ reached: true, reason: "tokens" }),
+  });
+  check("restraint: a cached verdict withholds nothing", ceilinged.withheld === undefined);
+
+  const unescalated = await judgeTransaction(request, {
+    adapter: fixed("want", 0.7),
+    canEscalate: () => false,
+    checkCeiling: () => ({ reached: false }),
+  });
+  check(
+    "restraint: a hedge nobody adjudicated is still withheld",
+    unescalated.withheld?.reason === "unsure",
+  );
+
+  // The strong silence: the cheap tier contested, the expensive tier took the person's
+  // side, and the argument was dropped before it reached them. Branches on call order
+  // because screening always runs first.
+  {
+    let call = 0;
+    const twoMinds = {
+      name: "fixture",
+      async complete() {
+        call += 1;
+        return {
+          text:
+            call === 1
+              ? '{"verdict":"want","confidence":0.95,"reasoning":"You call comforts needs."}'
+              : '{"verdict":"need","confidence":0.9,"reasoning":"You were right."}',
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+        };
+      },
+    };
+    const dropped = await judgeTransaction(request, { ...open, adapter: twoMinds });
+    check("restraint: both tiers were asked", call === 2, `calls=${call}`);
+    check(
+      "restraint: an overruled contest agrees with the person",
+      dropped.agrees === true && dropped.verdict === "need",
+    );
+    check("restraint: the overruled contest is recorded", dropped.withheld?.reason === "overruled");
+    check("restraint: the dropped verdict is the cheap tier's", dropped.withheld?.verdict === "want");
+    check(
+      "restraint: the dropped confidence is the cheap tier's, not the one that won",
+      dropped.withheld?.confidence === 0.95,
+      `conf=${dropped.withheld?.confidence}`,
+    );
+  }
+
+  // Both paths are walkable with no API key at all, which is how the surface gets designed.
+  const marked = await judgeTransaction({
+    purchase: { amount: 260, label: "Headphones #want", intent: "need", readinessTag: null },
+    history: [],
+  });
+  check(
+    "restraint: a marked contest is spoken",
+    marked.agrees === false && marked.withheld === undefined,
+  );
+  const markedQuiet = await judgeTransaction({
+    purchase: { amount: 260, label: "Headphones #want #low", intent: "need", readinessTag: null },
+    history: [],
+  });
+  check("restraint: #low walks the withheld path", markedQuiet.withheld?.reason === "unsure");
+}
+
+// 11. The guard itself: nothing above touched the network.
 check("no network calls attempted", fetchAttempts === 0, `fetch=${fetchAttempts}`);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

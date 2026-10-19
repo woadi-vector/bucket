@@ -17,16 +17,32 @@ import { createTavilySource } from "@/lib/server/tavily";
 export type VerdictResponse = Pick<
   Verdict,
   "agrees" | "verdict" | "confidence" | "reasoning" | "question" | "explanationAccepted"
-> & { cached?: true; exchangeId?: string };
+> & { cached?: true; withheld?: true; exchangeId?: string };
 
-/** Strips telemetry and drops absent optional fields rather than sending nulls. */
+/**
+ * Strips telemetry and drops absent optional fields rather than sending nulls.
+ *
+ * A withheld contest is the one case where this removes something the engine produced: the
+ * browser is told Bucket kept quiet and is not told what it would have said, so no later
+ * change to a component can render the argument at someone anyway. The unspoken verdict and
+ * the reason for the silence go to the exchange log, where they are counted and not shown.
+ *
+ * Only a *live* contest is hidden, which is why this reads `agrees` as well. When the
+ * expensive tier overrules the cheap one, the verdict that comes back genuinely agrees with
+ * the person and its reasoning is an agreement, not a suppressed argument. That case leaves
+ * here looking exactly like any other agreement, because as far as the person is concerned
+ * it is one. The dropped contest exists only in the log.
+ */
 function toResponse(verdict: Verdict, exchangeId?: string): VerdictResponse {
+  const hidden = Boolean(verdict.withheld) && !verdict.agrees;
+
   return {
     agrees: verdict.agrees,
     verdict: verdict.verdict,
     confidence: verdict.confidence,
-    reasoning: verdict.reasoning,
-    ...(verdict.question ? { question: verdict.question } : {}),
+    reasoning: hidden ? "" : verdict.reasoning,
+    ...(verdict.question && !hidden ? { question: verdict.question } : {}),
+    ...(hidden ? { withheld: true as const } : {}),
     ...(verdict.explanationAccepted !== undefined
       ? { explanationAccepted: verdict.explanationAccepted }
       : {}),
@@ -144,6 +160,12 @@ export const requestVerdict = createServerFn({ method: "POST" })
  * Only disagreements are stored. An agreement is not an exchange, and counting it would pad
  * the denominator with purchases Bucket never questioned.
  *
+ * A withheld contest is stored even though it was never spoken, and an overruled one is
+ * stored even though the verdict that comes back agrees with the person. That is the whole
+ * reason the log is worth anything: a record of only the disagreements Bucket chose to voice
+ * would describe an app that disagrees with everything, and the restraint would be a claim
+ * with nothing behind it. The silences are the part that could not have been faked.
+ *
  * A failed write costs the reader an `exchangeId` and nothing else: the verdict still goes
  * back, and the reconsideration path writes a standalone row when it arrives without one.
  */
@@ -152,13 +174,18 @@ async function logged(
   request: VerdictRequest,
   sessionId?: string,
 ): Promise<VerdictResponse> {
-  if (verdict.agrees) return toResponse(verdict);
+  if (verdict.agrees && !verdict.withheld) return toResponse(verdict);
   const id = await recordChallenge({
     sessionId: sessionId ?? getOrCreateSessionId(),
     request,
     verdict,
   });
-  return toResponse(verdict, id);
+
+  // The id is how an explanation gets attached to this exact challenge later, so it only
+  // belongs in a response that asked the person something. A withheld contest asked nothing
+  // and has nothing to attach: sending its id would hand the browser a handle to a row the
+  // person was deliberately not shown.
+  return toResponse(verdict, verdict.withheld ? undefined : id);
 }
 
 /**

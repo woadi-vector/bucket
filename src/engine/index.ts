@@ -18,6 +18,7 @@ import { buildReconsiderPrompt, buildVerdictPrompt } from "./prompt";
 import { parseVerdict, VerdictParseError } from "./parse";
 import { createStubAdapter } from "./stub-adapter";
 import { buildEvidenceQuery, type Evidence, type EvidenceSource } from "./evidence";
+import { withholdOverruled, withholdSustained } from "./restraint";
 import type {
   CeilingStatus,
   EvidenceTelemetry,
@@ -156,16 +157,16 @@ export async function judgeTransaction(
   // The cheap pass agreed with the user, so there is no argument to adjudicate and the
   // expensive tier is never touched. This is the whole efficiency claim.
   if (screening.agrees || screening.telemetry?.degraded || screeningTier === "stub") {
-    return screening;
+    return spokenOrWithheld(screening);
   }
 
   if (!options.canEscalate || !(await options.canEscalate())) {
-    return screening;
+    return spokenOrWithheld(screening);
   }
 
   // The screening call just added to the ledger, so ask again before the expensive tier.
   if (await ceilingReached(options)) {
-    return screening;
+    return spokenOrWithheld(screening);
   }
 
   /**
@@ -179,12 +180,38 @@ export async function judgeTransaction(
   const adjudication = await runTier(request, options, adapter, "ultra");
   await options.onUsage?.({ telemetry: adjudication.telemetry!, agrees: adjudication.agrees });
 
-  if (adjudication.telemetry?.degraded) return screening;
+  if (adjudication.telemetry?.degraded) return spokenOrWithheld(screening);
 
-  return {
+  const adjudicated: Verdict = {
     ...adjudication,
     telemetry: { ...adjudication.telemetry!, escalatedFrom: screeningTier, stage: "adjudication" },
   };
+
+  /**
+   * The expensive tier took the person's side against the cheap one.
+   *
+   * Nothing is shown either way, because the verdict now agrees with their tag. What is
+   * recorded is that an argument happened and the system dropped it on its own, which is
+   * the only silence in this app that rests on two models disagreeing rather than on a
+   * number a model reported about itself.
+   */
+  if (adjudicated.agrees) {
+    return { ...adjudicated, withheld: withholdOverruled(screening) };
+  }
+
+  return spokenOrWithheld(adjudicated);
+}
+
+/**
+ * Attaches the reason for silence to a verdict on its way out, or returns it untouched when
+ * Bucket should speak.
+ *
+ * Every return path in {@link judgeTransaction} that can carry a contest goes through here,
+ * so a path added later cannot quietly skip the decision and start interrupting people.
+ */
+function spokenOrWithheld(verdict: Verdict): Verdict {
+  const withheld = withholdSustained(verdict);
+  return withheld ? { ...verdict, withheld } : verdict;
 }
 
 /**

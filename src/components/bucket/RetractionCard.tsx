@@ -32,7 +32,9 @@ export function RetractionCard({
   onDismiss,
 }: Props) {
   const verdict = transaction?.verdict;
-  const open = Boolean(transaction && verdict && !verdict.agrees);
+  // A withheld disagreement never opens this. Bucket decided it was not sure enough to say
+  // so, and the whole value of that decision is that the person is not shown this dialog.
+  const open = Boolean(transaction && verdict && !verdict.agrees && !verdict.withheld);
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onDismiss()}>
