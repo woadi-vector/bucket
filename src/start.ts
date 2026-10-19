@@ -26,18 +26,25 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
 // bookmark and cannot be produced by another site, so accepting it is safe -- a cross-site
 // form POST arrives as `cross-site`.
 //
+// Only requests that can change something are checked. A GET is a page load or a read, and a
+// link from another site (Devpost, a search result, a chat) arrives as a cross-site GET; checking
+// those 403'd every visitor who clicked through to the demo instead of typing the URL. Every
+// server function that writes (saving buckets, keep, let go, shop) is a POST, so the check still
+// covers each one.
+//
 // Routes under /api/ are exempt. They are meant to be called by other programs (a shopping agent
 // asking /api/policy/check, anyone reading /api/ledger), which send no Origin or Sec-Fetch-Site
 // header and would otherwise get a bare 403. That is safe because none of them reads or sets the
 // session cookie: there is no visitor's state for another site to forge a request against.
 const isPublicApi = (request: Request) => new URL(request.url).pathname.startsWith("/api/");
+const isRead = (request: Request) => ["GET", "HEAD", "OPTIONS"].includes(request.method);
 
 export const startInstance = createStart(() => ({
   requestMiddleware: [
     errorMiddleware,
     createCsrfMiddleware({
       secFetchSite: ["same-origin", "none"],
-      filter: ({ request }) => !isPublicApi(request),
+      filter: ({ request }) => !isRead(request) && !isPublicApi(request),
     }),
   ],
 }));
