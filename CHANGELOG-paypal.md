@@ -47,3 +47,13 @@ Each found by running the real services, not by the tests:
   second model that checks the pairing and can overrule the agent.
 - Small wants were labeled "a need" on the ledger; Savings was offered to the agent as a bucket to
   buy from. Both fixed.
+
+## Oct 18, evening: the ledger as a working table
+
+- **Refusals recorded.** A decline or an overrule never creates a PayPal order, so it used to
+  leave no trace. A `refusals` table (migration 0006) now records each one with the request, the
+  product the second check refused, and the model's stated reason.
+- **Ledger rebuilt with AG Grid and AG Charts.** Holds and refusals in one sortable, filterable,
+  searchable grid, with a CSV export and a pinned total row. A bar chart of dollars by outcome is
+  drawn from the grid's filtered rows. Both libraries load on `/ledger` only.
+- **25 ledger checks** (`npm run check:ledger`) on how rows, totals and chart sums are computed.

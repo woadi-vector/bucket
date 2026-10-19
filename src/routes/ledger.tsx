@@ -1,15 +1,18 @@
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { readLedger, type PublicHold } from "@/lib/bucket/hold-fns";
+import { readLedger } from "@/lib/bucket/hold-fns";
+import { toLedgerRows } from "@/lib/bucket/ledger-rows";
 
 /**
- * Every PayPal hold Bucket has placed, newest first.
+ * Every PayPal hold Bucket has placed, and every purchase the agent refused before PayPal was
+ * called, newest first.
  *
- * Evidence, not product, and plain on purpose, like the exchange log. Each row carries PayPal's
- * authorization id, so anyone can check a row against PayPal's record instead of believing this
- * page. Releases are listed beside captures: a purchase the person let go is the outcome the app
- * exists to produce, so hiding those rows would hide the point.
+ * Each hold carries PayPal's authorization id, so anyone can check a row against PayPal's record
+ * instead of believing this page. Releases and refusals are listed beside captures: a purchase
+ * that never happened is the outcome the app exists to produce, so hiding those rows would hide
+ * the point.
  *
- * Public, with no key: rows hold the product, the amount, the bucket and the decision, and no
+ * Public, with no key: rows hold the product, the amount, the bucket tag and the decision, and no
  * visitor identifier. The same data is at /api/ledger as JSON.
  */
 export const Route = createFileRoute("/ledger")({
@@ -19,107 +22,110 @@ export const Route = createFileRoute("/ledger")({
       { title: "Bucket · PayPal ledger" },
       {
         name: "description",
-        content: "Every PayPal hold Bucket has placed, and what became of it.",
+        content:
+          "Every PayPal hold Bucket has placed, every purchase it refused, and what became of each.",
       },
     ],
   }),
   component: LedgerPage,
 });
 
-const when = (ms: number) => new Date(ms).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+// AG Grid and AG Charts load in the browser only, after the page has rendered.
+const LedgerBoard = lazy(() => import("@/components/bucket/LedgerBoard"));
+
 const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-function outcome(h: PublicHold): string {
-  if (h.state === "held") return "held, waiting";
-  if (h.state === "deciding") return "deciding";
-  const by =
-    h.decidedBy === "clock"
-      ? "the clock ran out"
-      : h.decidedBy === "policy"
-        ? h.bucketTag === "need"
-          ? "a need, passed at once"
-          : "a small want, under its bucket's threshold"
-        : "the person decided";
-  return `${h.state === "captured" ? "captured" : "released (voided)"} · ${by}`;
+function Tile({
+  label,
+  value,
+  sub,
+  color,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  color: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-[#e7e4da] bg-white px-4 py-3">
+      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+        {label}
+      </div>
+      <div className="mt-1 text-2xl font-bold tabular-nums tracking-tight">{value}</div>
+      <div className="text-xs text-slate-500">{sub}</div>
+    </div>
+  );
 }
 
 function LedgerPage() {
-  const holds = Route.useLoaderData();
-  const captured = holds.filter((h) => h.state === "captured");
-  const released = holds.filter((h) => h.state === "voided");
-  const keptCents = released.reduce((s, h) => s + h.amountCents, 0);
+  const data = Route.useLoaderData();
+  const rows = useMemo(() => toLedgerRows(data), [data]);
+  const t = data.totals;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const released = t.releasedByPerson + t.releasedByClock;
 
   return (
-    <main
-      style={{
-        maxWidth: 820,
-        margin: "0 auto",
-        padding: "2.5rem 1rem 4rem",
-        fontFamily: "ui-sans-serif, system-ui, sans-serif",
-        lineHeight: 1.5,
-      }}
-    >
-      <p style={{ fontSize: "0.8rem" }}>
-        <Link to="/">← Bucket</Link>
-      </p>
-      <h1 style={{ fontSize: "1.5rem", margin: "0.5rem 0" }}>PayPal ledger</h1>
-      <p style={{ color: "#444", maxWidth: 640 }}>
-        Every hold Bucket's shopping agent placed through PayPal (sandbox), and what became of it.
-        Each authorization id below is PayPal's own, so any row can be checked against PayPal's
-        record. Released holds are kept on the list. Raw JSON: <a href="/api/ledger">/api/ledger</a>
-        .
-      </p>
+    <main className="min-h-screen bg-[#faf9f4] text-[#1c2a24]">
+      <div className="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-6">
+        <p className="text-sm">
+          <Link to="/" className="text-slate-500 hover:text-[#0b7a58]">
+            ← Bucket
+          </Link>
+        </p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight">PayPal ledger</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
+          Every hold Bucket's shopping agent placed through PayPal (sandbox), and every purchase it
+          refused before PayPal was called. Each authorization id is PayPal's own, so any row can be
+          checked against PayPal's record. Nothing is removed: released holds and refusals stay on
+          the list. Raw JSON:{" "}
+          <a href="/api/ledger" className="font-medium text-[#0b7a58] underline">
+            /api/ledger
+          </a>
+          .
+        </p>
 
-      <p style={{ margin: "1.25rem 0", fontSize: "0.95rem" }}>
-        <strong>{holds.length}</strong> holds · <strong>{captured.length}</strong> captured ·{" "}
-        <strong>{released.length}</strong> released, keeping <strong>{usd(keptCents)}</strong> in
-        people's pockets.
-      </p>
-
-      {holds.length === 0 ? (
-        <p style={{ color: "#777" }}>No holds yet.</p>
-      ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "2px solid #ccc" }}>
-                <th style={{ padding: "0.4rem" }}>When</th>
-                <th style={{ padding: "0.4rem" }}>Purchase</th>
-                <th style={{ padding: "0.4rem" }}>Bucket</th>
-                <th style={{ padding: "0.4rem", textAlign: "right" }}>Amount</th>
-                <th style={{ padding: "0.4rem" }}>Outcome</th>
-                <th style={{ padding: "0.4rem" }}>PayPal authorization</th>
-              </tr>
-            </thead>
-            <tbody>
-              {holds.map((h) => (
-                <tr key={h.id} style={{ borderBottom: "1px solid #eee", verticalAlign: "top" }}>
-                  <td style={{ padding: "0.4rem", whiteSpace: "nowrap", color: "#555" }}>
-                    {when(h.createdAt)}
-                  </td>
-                  <td style={{ padding: "0.4rem" }}>
-                    {h.label}
-                    {h.merchant ? <div style={{ color: "#777" }}>{h.merchant}</div> : null}
-                  </td>
-                  <td style={{ padding: "0.4rem", whiteSpace: "nowrap" }}>
-                    <code>{h.bucketId}</code> · {h.bucketTag}
-                  </td>
-                  <td style={{ padding: "0.4rem", textAlign: "right" }}>{usd(h.amountCents)}</td>
-                  <td style={{ padding: "0.4rem" }}>
-                    {outcome(h)}
-                    {h.lastError ? (
-                      <div style={{ color: "#a33" }}>last PayPal error: {h.lastError}</div>
-                    ) : null}
-                  </td>
-                  <td style={{ padding: "0.4rem" }}>
-                    <code>{h.authorizationId}</code>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Tile
+            label="Money moved"
+            value={usd(t.capturedCents)}
+            sub={`${t.captured} captured`}
+            color="#475569"
+          />
+          <Tile
+            label="Released by Bucket"
+            value={usd(t.releasedCents)}
+            sub={`${released} voided · ${t.releasedByPerson} let go, ${t.releasedByClock} by the clock`}
+            color="#0b7a58"
+          />
+          <Tile
+            label="Reserved, waiting"
+            value={String(t.waiting)}
+            sub="holds open right now"
+            color="#d97706"
+          />
+          <Tile
+            label="Never reached PayPal"
+            value={String(t.declined + t.overruled)}
+            sub={`${t.declined} declined · ${t.overruled} overruled (${usd(t.overruledCents)})`}
+            color="#7c6bb0"
+          />
         </div>
-      )}
+
+        <div className="mt-6">
+          {rows.length === 0 ? (
+            <p className="text-sm text-slate-500">No holds or refusals yet.</p>
+          ) : mounted ? (
+            <Suspense fallback={<p className="text-sm text-slate-500">Loading the table…</p>}>
+              <LedgerBoard rows={rows} />
+            </Suspense>
+          ) : (
+            <p className="text-sm text-slate-500">Loading the table…</p>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

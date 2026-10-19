@@ -102,9 +102,17 @@ ceiling passed as a filter.
 ## Check it without trusting us
 
 - **The ledger** at [`/ledger`](https://bucket-paypal.jason-wold.workers.dev/ledger) lists every
-  hold the demo has placed, with PayPal's authorization id, the bucket, and the outcome
-  (captured, released by the person, released by the clock). Released holds stay on the list.
-  The same data is JSON at `/api/ledger`. Rows carry no visitor identifier.
+  hold the demo has placed, with PayPal's authorization id, the bucket, and the outcome (paid at
+  once, kept, let go, expired by the clock, or still waiting). It also lists every purchase the
+  agent refused before PayPal was called: declines, and picks the second check overruled. Nothing
+  is removed. The same data is JSON at `/api/ledger`. Rows carry no visitor identifier.
+- **The ledger is a working table, not a screenshot.** It is built with
+  [AG Grid](https://www.ag-grid.com) and [AG Charts](https://www.ag-grid.com/charts/) (both
+  Community, MIT). Holds and refusals share one grid, so you can sort by amount, filter to
+  "Let go", or search for an authorization id. The bar chart of dollars by outcome is drawn from
+  whatever rows the grid is showing, and a pinned row totals them; filter the grid and both
+  follow. "Download CSV" exports the filtered rows. Both libraries load on that page only, after
+  it renders.
 - **Declines show their work.** When the agent buys nothing, the card lists every listing it
   looked at, with price, seller and category, so you can judge the decline yourself.
 - **The tests are the claims.** Each thing the demo video says about money is a check:
@@ -112,6 +120,7 @@ ceiling passed as a filter.
 ```bash
 npm run check:payments   # 38 checks: holds, keep, let go, races, expiry, reconciliation, the AI boundary
 npm run check:shop       # 40 checks: agent, second check, screen, rule, declines, injected catalog text
+npm run check:ledger     # 25 checks: how holds and refusals become ledger rows, totals and chart sums
 ```
 
 Both run against fakes that answer with the shapes the real services returned. To run the same
@@ -146,9 +155,9 @@ Deploying to Cloudflare Workers: [`docs/deploy-paypal.md`](docs/deploy-paypal.md
 
 ## Stack
 
-TanStack Start and React on Cloudflare Workers, with D1 for buckets and holds. PayPal Orders v2,
-Payments v2 and Vault v3 (sandbox). NVIDIA Nemotron on Nebius Token Factory. Channel3 product
-search.
+TanStack Start and React on Cloudflare Workers, with D1 for buckets, holds and refusals. PayPal
+Orders v2, Payments v2 and Vault v3 (sandbox). NVIDIA Nemotron on Nebius Token Factory. Channel3
+product search. AG Grid and AG Charts (Community) for the public ledger.
 
 ## Team
 

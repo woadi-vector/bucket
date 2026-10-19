@@ -19,6 +19,7 @@ import { searchProducts, type ProductOption } from "@/lib/server/channel3";
 import { recordChallenge } from "@/lib/server/exchanges";
 import { toPublicHold, type PublicHold } from "@/lib/server/holds";
 import { placeHold } from "@/lib/server/payments";
+import { recordRefusal } from "@/lib/server/refusals";
 import { decidePolicy, type PolicyDecision } from "@/lib/server/policy";
 import { getStore } from "@/lib/server/store";
 
@@ -26,7 +27,7 @@ import { getStore } from "@/lib/server/store";
  * One agent purchase, end to end: search, choose, screen, decide, hold.
  *
  *   1. Channel3 finds products under the person's price ceiling.
- *   2. The agent (Nemotron Nano) picks one and files it into one of the person's buckets. It
+ *   2. The agent (Nemotron Super) picks one and files it into one of the person's buckets. It
  *      never sees which buckets are needs, so it cannot route around a pause.
  *   3. If the bucket is a need, the screen (the same engine the Nebius build uses) checks
  *      whether the purchase actually reads like one. A want bucket skips this: the bucket's
@@ -86,6 +87,12 @@ export type ShopResult =
       overruled?: boolean;
       /** What it looked at, so a decline can be judged by the person instead of trusted. */
       options?: { title: string; priceCents: number; merchant: string; category: string | null }[];
+      /** On an overrule: the product the agent picked, which the second check refused. */
+      rejected?: { title: string; priceCents: number; merchant: string; category: string | null };
+      /** On an overrule: the second check's own words, apart from the summary message. */
+      checkReason?: string;
+      /** The ledger row this refusal was written to. */
+      refusalId?: string;
     };
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
@@ -162,18 +169,31 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
   await recordUsage({ sessionId, telemetry: choice.telemetry, agreed: true });
 
   // The agent looked and found nothing that is what was asked for. Nothing reaches PayPal.
+  const options = products.map((p) => ({
+    title: p.title,
+    priceCents: p.priceCents,
+    merchant: p.merchant,
+    category: p.category,
+  }));
   if (choice.declined) {
+    const refusal = await recordRefusal({
+      kind: "declined",
+      request: input.request,
+      maxCents: input.maxPriceCents ?? null,
+      productTitle: null,
+      priceCents: null,
+      merchant: null,
+      category: null,
+      reason: choice.reason,
+      considered: products.length,
+    });
     return {
       ok: false,
       reason: "declined",
       message: choice.reason,
       considered: products.length,
-      options: products.map((p) => ({
-        title: p.title,
-        priceCents: p.priceCents,
-        merchant: p.merchant,
-        category: p.category,
-      })),
+      options,
+      refusalId: refusal.id,
     };
   }
 
@@ -187,20 +207,33 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
   });
   await recordUsage({ sessionId, telemetry: check.telemetry, agreed: check.ran && check.fits });
   if (check.ran && !check.fits) {
+    const checkReason = check.reason || "It is not the thing that was asked for.";
+    const refusal = await recordRefusal({
+      kind: "overruled",
+      request: input.request,
+      maxCents: input.maxPriceCents ?? null,
+      productTitle: product.title,
+      priceCents: product.priceCents,
+      merchant: product.merchant,
+      category: product.category,
+      reason: checkReason,
+      considered: products.length,
+    });
     return {
       ok: false,
       reason: "declined",
-      message: `The agent picked ${product.title}, and a second check overruled it: ${
-        check.reason || "it is not the thing that was asked for."
-      }`,
+      message: `The agent picked ${product.title}, and a second check overruled it: ${checkReason}`,
       overruled: true,
       considered: products.length,
-      options: products.map((p) => ({
-        title: p.title,
-        priceCents: p.priceCents,
-        merchant: p.merchant,
-        category: p.category,
-      })),
+      options,
+      rejected: {
+        title: product.title,
+        priceCents: product.priceCents,
+        merchant: product.merchant,
+        category: product.category,
+      },
+      checkReason,
+      refusalId: refusal.id,
     };
   }
 

@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getOrCreateSessionId } from "@/lib/server/session";
-import { listHolds, listHoldsForSession, toPublicHold, type PublicHold } from "@/lib/server/holds";
+import { listHoldsForSession, toPublicHold, type PublicHold } from "@/lib/server/holds";
 import { keep, letGo, sweepExpired, type DecisionResult } from "@/lib/server/payments";
+import { readLedgerData, type LedgerData } from "@/lib/server/ledger";
 
 /**
  * The app's handle on PayPal holds: read your own, keep one, let one go, and read the public
@@ -12,7 +13,7 @@ import { keep, letGo, sweepExpired, type DecisionResult } from "@/lib/server/pay
  * countdown reach zero sees it voided on the next refresh.
  */
 
-export type { PublicHold };
+export type { PublicHold, LedgerData };
 
 async function sweep(): Promise<void> {
   try {
@@ -63,10 +64,7 @@ export const letGoHold = createServerFn({ method: "POST" })
     toDecision(await letGo(data.id, { decidedBy: "user", sessionId: getOrCreateSessionId() })),
   );
 
-/** Every hold, newest first, for the public ledger page. */
-export const readLedger = createServerFn({ method: "GET" }).handler(
-  async (): Promise<PublicHold[]> => {
-    await sweep();
-    return (await listHolds(100)).map(toPublicHold);
-  },
+/** The public ledger: every hold, every refusal, and the totals. The same data as /api/ledger. */
+export const readLedger = createServerFn({ method: "GET" }).handler(async (): Promise<LedgerData> =>
+  readLedgerData(),
 );
