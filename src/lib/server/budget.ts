@@ -1,5 +1,6 @@
 import type { CeilingStatus, ModelTier, VerdictTelemetry } from "@/engine";
 import { getDb, getEnvVar } from "@/lib/server-env";
+import type { TierUsage } from "@/lib/efficiency";
 
 /**
  * Spend accounting and the budget guard.
@@ -298,33 +299,41 @@ export async function recordUsage(args: {
   }
 }
 
-/** Totals for the demo's efficiency panel. */
-export async function readUsageSummary(): Promise<{
-  byTier: Array<{ tier: string; calls: number; totalTokens: number; costMicros: number }>;
-  totalCostMicros: number;
-}> {
+/**
+ * What each tier was asked to do and what it cost, for the efficiency panel.
+ *
+ * Degraded calls are excluded. A fallback is not the model answering, and leaving them in
+ * would let an outage pad the call count of a tier that never ran.
+ *
+ * Returns rows and nothing derived. The arithmetic lives in `src/lib/efficiency.ts`, where
+ * it can be checked without a database, so that the page and the checks cannot drift into
+ * computing different numbers from the same ledger.
+ *
+ * With no D1 binding there is no per-tier record to return, so this is empty in local
+ * development rather than approximated from the in-memory counters. A panel showing nothing
+ * is honest; one showing a shape the ledger cannot support is not.
+ */
+export async function readTierUsage(): Promise<TierUsage[]> {
   const db = getDb();
-  if (!db) return { byTier: [], totalCostMicros: devCounters().totalMicros };
+  if (!db) return [];
 
   try {
     const rows = await db
       .prepare(
         `SELECT tier,
-                COUNT(*)                  AS calls,
+                COUNT(*)                       AS calls,
                 COALESCE(SUM(total_tokens), 0) AS totalTokens,
-                COALESCE(SUM(cost_micros), 0)  AS costMicros
+                COALESCE(SUM(cost_micros), 0)  AS costMicros,
+                AVG(latency_ms)                AS avgLatencyMs
            FROM model_usage
+          WHERE degraded = 0
           GROUP BY tier`,
       )
-      .all<{ tier: string; calls: number; totalTokens: number; costMicros: number }>();
+      .all<TierUsage>();
 
-    const byTier = rows.results ?? [];
-    return {
-      byTier,
-      totalCostMicros: byTier.reduce((sum, r) => sum + r.costMicros, 0),
-    };
+    return rows.results ?? [];
   } catch (error) {
-    console.error("[budget] summary read failed", error);
-    return { byTier: [], totalCostMicros: 0 };
+    console.error("[budget] tier usage read failed", error);
+    return [];
   }
 }

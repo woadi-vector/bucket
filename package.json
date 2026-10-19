@@ -17,6 +17,7 @@
     "check:secrets": "node scripts/check-no-secret-in-bundle.mjs",
     "check:engine": "node scripts/check-engine.mjs",
     "check:exchanges": "node scripts/check-exchanges.mjs",
+    "check:efficiency": "node scripts/check-efficiency.mjs",
     "probe:tavily": "node scripts/probe-tavily.mjs"
   },
   "dependencies": {

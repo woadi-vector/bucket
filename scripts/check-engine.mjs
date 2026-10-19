@@ -573,7 +573,10 @@ const check = (name, cond, detail = "") => {
       dropped.agrees === true && dropped.verdict === "need",
     );
     check("restraint: the overruled contest is recorded", dropped.withheld?.reason === "overruled");
-    check("restraint: the dropped verdict is the cheap tier's", dropped.withheld?.verdict === "want");
+    check(
+      "restraint: the dropped verdict is the cheap tier's",
+      dropped.withheld?.verdict === "want",
+    );
     check(
       "restraint: the dropped confidence is the cheap tier's, not the one that won",
       dropped.withheld?.confidence === 0.95,

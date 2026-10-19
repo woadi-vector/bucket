@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EfficiencyRouteImport } from './routes/efficiency'
 import { Route as ExchangesRouteImport } from './routes/exchanges'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EfficiencyRoute = EfficiencyRouteImport.update({
+  id: '/efficiency',
+  path: '/efficiency',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExchangesRoute = ExchangesRouteImport.update({
@@ -25,27 +31,31 @@ const ExchangesRoute = ExchangesRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/efficiency': typeof EfficiencyRoute
   '/exchanges': typeof ExchangesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/efficiency': typeof EfficiencyRoute
   '/exchanges': typeof ExchangesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/efficiency': typeof EfficiencyRoute
   '/exchanges': typeof ExchangesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/exchanges'
+  fullPaths: '/' | '/efficiency' | '/exchanges'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/exchanges'
-  id: '__root__' | '/' | '/exchanges'
+  to: '/' | '/efficiency' | '/exchanges'
+  id: '__root__' | '/' | '/efficiency' | '/exchanges'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  EfficiencyRoute: typeof EfficiencyRoute
   ExchangesRoute: typeof ExchangesRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/efficiency': {
+      id: '/efficiency'
+      path: '/efficiency'
+      fullPath: '/efficiency'
+      preLoaderRoute: typeof EfficiencyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/exchanges': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  EfficiencyRoute: EfficiencyRoute,
   ExchangesRoute: ExchangesRoute,
 }
 export const routeTree = rootRouteImport
