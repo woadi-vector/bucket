@@ -9,6 +9,7 @@
  *   - Something like it was bought recently.
  *   - Something like it was let go recently.
  *   - Something like it is already waiting as a hold.
+ *   - The same search found something like it for meaningfully less.
  *
  * Every reason is a fact from the person's own records, worded so they can check it. No model
  * is involved: a reason that cannot be checked is not a legitimate reason to stop a purchase.
@@ -23,6 +24,9 @@ export type PastPurchase = {
   kind: "bought" | "let-go" | "waiting";
 };
 
+/** Another listing from the same search, for the cheaper-option check. */
+export type Alternative = { title: string; priceCents: number; merchant: string };
+
 export type PushbackInput = {
   title: string;
   amountCents: number;
@@ -33,7 +37,17 @@ export type PushbackInput = {
   heldInBucketCents: number;
   history: PastPurchase[];
   now: number;
+  /** The other listings the same search returned. */
+  alternatives?: Alternative[];
 };
+
+/**
+ * The bar for naming a cheaper option, the same as the pricing rules on `main`
+ * (src/engine/pricing.ts): the difference has to be big enough to change a decision, or saying
+ * it is noise dressed as advice.
+ */
+export const MIN_SAVING_CENTS = 1500;
+export const MIN_SAVING_SHARE = 0.25;
 
 /** How far back a similar purchase still counts. */
 export const LOOKBACK_DAYS = 45;
@@ -119,6 +133,24 @@ export function findPushback(input: PushbackInput): string[] {
         : `This would overdraw ${input.bucketName} by ${dollars(short)}: it has ${dollars(
             Math.max(available, 0),
           )} left.`,
+    );
+  }
+
+  // A cheaper listing of the same kind of thing, from the search the agent just ran. The price
+  // is the catalog's and the subtraction happens here; no model states the number.
+  const cheaper = (input.alternatives ?? [])
+    .filter((a) => a.priceCents > 0 && a.priceCents < input.amountCents)
+    .filter((a) => a.title !== input.title && similar(a.title, input.title))
+    .filter((a) => {
+      const saving = input.amountCents - a.priceCents;
+      return saving >= MIN_SAVING_CENTS && saving / input.amountCents >= MIN_SAVING_SHARE;
+    })
+    .sort((a, b) => a.priceCents - b.priceCents)[0];
+  if (cheaper) {
+    reasons.push(
+      `The same search found ${name(cheaper.title)} at ${cheaper.merchant} for ${dollars(
+        cheaper.priceCents,
+      )}, ${dollars(input.amountCents - cheaper.priceCents)} less.`,
     );
   }
 

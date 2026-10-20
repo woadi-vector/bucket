@@ -75,3 +75,7 @@ From the call with Melissa (the idea is hers).
   purchase only when the model is confident (the same floors as `src/engine/restraint.ts` on
   `main`); a weaker doubt is logged in the exchange log and the purchase goes through. The
   factual pushback on wants is unchanged: a checkable fact is always worth saying.
+- **A cheaper listing is a reason too.** When the agent picks a want and the same search
+  returned something similar for at least $15 and 25% less, the pushback names it with the
+  difference: "The same search found Road running shoes at pace.example for $64.50, $24.50
+  less." Same bar as the pricing rules on `main`; the arithmetic is in code.

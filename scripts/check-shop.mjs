@@ -559,6 +559,49 @@ const pb = await bundle("src/lib/server/pushback.ts");
   );
 }
 
+{
+  const now = 1_800_000_000_000;
+  const base = {
+    title: "Trail running shoes",
+    amountCents: 8900,
+    bucketName: "Gear & Fun",
+    bucketBalanceCents: 15000,
+    heldInBucketCents: 0,
+    history: [],
+    now,
+  };
+  const cheaper = pb.findPushback({
+    ...base,
+    alternatives: [
+      { title: "Road running shoes", priceCents: 6450, merchant: "pace.example" },
+      { title: "Organic oat milk, 6 pack", priceCents: 1899, merchant: "grocer.example" },
+    ],
+  });
+  check(
+    "pushback: a similar listing for meaningfully less is named, with the difference worked out",
+    cheaper[0] ===
+      "The same search found Road running shoes at pace.example for $64.50, $24.50 less.",
+    cheaper[0],
+  );
+  check(
+    "pushback: a small difference is not worth saying",
+    pb.findPushback({
+      ...base,
+      alternatives: [{ title: "Road running shoes", priceCents: 7900, merchant: "pace.example" }],
+    }).length === 0,
+    "$10 is under the $15 floor",
+  );
+  check(
+    "pushback: a different kind of thing is not a cheaper option",
+    pb.findPushback({
+      ...base,
+      alternatives: [
+        { title: "Organic oat milk, 6 pack", priceCents: 1899, merchant: "grocer.example" },
+      ],
+    }).length === 0,
+  );
+}
+
 // In the shop: a small want with a reason is held, not captured.
 reset();
 {

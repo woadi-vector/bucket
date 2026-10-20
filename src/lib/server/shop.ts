@@ -255,7 +255,9 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
 
   // 3b. Pushback, for want buckets: concrete reasons from the person's own records.
   const pushback =
-    tag === "want" ? await wantPushback(sessionId, product, bucket, state) : ([] as string[]);
+    tag === "want"
+      ? await wantPushback(sessionId, product, bucket, state, products)
+      : ([] as string[]);
 
   // 4. Decide.
   const policy = decidePolicy({
@@ -309,6 +311,7 @@ async function wantPushback(
   product: ProductOption,
   bucket: Bucket,
   state: Awaited<ReturnType<ReturnType<typeof getStore>["load"]>>,
+  products: ProductOption[],
 ): Promise<string[]> {
   const holds = await listHoldsForSession(sessionId).catch((error) => {
     console.error("[shop] could not read holds for pushback", error);
@@ -351,6 +354,9 @@ async function wantPushback(
     heldInBucketCents,
     history,
     now: Date.now(),
+    alternatives: products
+      .filter((p) => p.id !== product.id)
+      .map((p) => ({ title: p.title, priceCents: p.priceCents, merchant: p.merchant })),
   });
 }
 

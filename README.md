@@ -33,7 +33,9 @@ Type "trail running shoes" and a price ceiling. In about ten seconds:
    written to the exchange log and not raised, so Bucket does not nag.
 5. **Pushback.** If the bucket is a want, Bucket looks for a concrete reason to wait in your own
    records: it would overdraw the bucket (counting money already on hold), or you bought, let go
-   or are already holding something like it in the last 45 days. Each reason is a checkable fact,
+   or are already holding something like it in the last 45 days, or the same search found
+   something like it for at least $15 and 25% less (the price is the catalog's; the subtraction
+   is done in code, never by a model). Each reason is a checkable fact,
    for example "You bought Scend Pro Running Shoes 3 weeks ago."
 6. **Rule.** Code, not a model, decides: a need passes; a want with any pushback is held, however
    small; a want at or over its bucket's threshold is held; a doubted need is held.
@@ -126,7 +128,7 @@ ceiling passed as a filter.
 
 ```bash
 npm run check:payments   # 38 checks: holds, keep, let go, races, expiry, reconciliation, the AI boundary
-npm run check:shop       # 55 checks: agent, second check, screen, rule, declines, injected catalog text
+npm run check:shop       # 58 checks: agent, second check, screen, rule, declines, injected catalog text
 npm run check:ledger     # 29 checks: how holds and refusals become ledger rows, totals and chart sums
 ```
 
