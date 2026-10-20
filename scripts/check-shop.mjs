@@ -59,6 +59,7 @@ const catalog = [
 const fake = {
   agentAnswer: null, // string the "agent" model returns; null means pick per test default
   screenVerdict: "need", // what the screening model says about a need-bucket purchase
+  screenConfidence: 0.8, // how sure it says it is (restraint.ts floors decide if it speaks)
   agentPrompts: [],
   screenPrompts: [],
   verifyPrompts: [],
@@ -137,7 +138,7 @@ globalThis.fetch = async (url, init = {}) => {
     }
     const content = JSON.stringify({
       verdict: fake.screenVerdict,
-      confidence: 0.8,
+      confidence: fake.screenConfidence,
       reasoning:
         fake.screenVerdict === "want" ? "This reads like a treat, not a staple." : "A staple.",
       question: fake.screenVerdict === "want" ? "Is this replacing something?" : undefined,
@@ -195,6 +196,7 @@ await store.getStore().save(SESSION, persistence.createSeededState());
 const reset = () => {
   fake.agentAnswer = null;
   fake.screenVerdict = "need";
+  fake.screenConfidence = 0.8;
   fake.agentPrompts = [];
   fake.screenPrompts = [];
   fake.verifyPrompts = [];
@@ -604,6 +606,29 @@ fake.screenVerdict = "need";
     r.ok && r.pushback.length === 0,
     r.ok ? r.pushback.join(" ") : r.reason,
   );
+}
+
+// Restraint: a weak doubt about a need is logged but not raised, and nothing is held.
+reset();
+fake.agentAnswer = '{"choice": 0, "bucketId": "b1", "reason": "Groceries."}';
+fake.screenVerdict = "want";
+fake.screenConfidence = 0.55;
+{
+  const r = await run("oat milk", 2000);
+  check(
+    "a low-confidence doubt about a need does not hold it",
+    r.ok && r.hold.state === "captured" && r.policy.decision === "capture",
+    r.ok ? `${r.hold.state}: ${r.policy.reason}` : r.reason,
+  );
+  check(
+    "the person is told only that Bucket kept quiet",
+    r.ok &&
+      r.screen.ran &&
+      r.screen.withheld === true &&
+      r.screen.reasoning === "" &&
+      !r.screen.question,
+  );
+  check("the held-back doubt is still logged", r.ok && r.screen.ran && !!r.screen.exchangeId);
 }
 
 console.log(failures === 0 ? "\nAll shop checks passed." : `\n${failures} check(s) failed.`);

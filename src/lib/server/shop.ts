@@ -57,6 +57,12 @@ export type ShopScreen =
       question?: string;
       exchangeId?: string;
       cached?: boolean;
+      /**
+       * Bucket doubted the need but not strongly enough to interrupt (restraint.ts). The doubt
+       * is in the exchange log; the browser is told only that Bucket kept quiet, and the
+       * purchase is treated as agreed.
+       */
+      withheld?: true;
     };
 
 export type ShopResult =
@@ -398,18 +404,23 @@ async function screenPurchase(
     });
   }
 
-  // A contested need goes into the same exchange log as every other challenge.
-  const exchangeId = verdict.agrees
-    ? undefined
-    : await recordChallenge({ sessionId, request, verdict });
+  // A contested need goes into the same exchange log as every other challenge, including the
+  // ones Bucket chose not to raise: a log of only the spoken doubts would hide the restraint.
+  const exchangeId =
+    verdict.agrees && !verdict.withheld
+      ? undefined
+      : await recordChallenge({ sessionId, request, verdict });
 
+  // A live doubt held back for low confidence. The person hears nothing, and nothing is held.
+  const hidden = Boolean(verdict.withheld) && !verdict.agrees;
   return {
     ran: true,
-    agrees: verdict.agrees,
-    verdict: verdict.verdict,
-    reasoning: verdict.reasoning,
-    ...(verdict.question ? { question: verdict.question } : {}),
+    agrees: verdict.agrees || hidden,
+    verdict: hidden ? "need" : verdict.verdict,
+    reasoning: hidden ? "" : verdict.reasoning,
+    ...(verdict.question && !hidden ? { question: verdict.question } : {}),
     ...(exchangeId ? { exchangeId } : {}),
     ...(verdict.cached ? { cached: true } : {}),
+    ...(hidden ? { withheld: true as const } : {}),
   };
 }

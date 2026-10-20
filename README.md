@@ -29,7 +29,8 @@ Type "trail running shoes" and a price ceiling. In about ten seconds:
 3. **Second check.** A separate model (Nemotron Nano, temperature 0) is asked one narrow
    question: is this product the thing that was requested? Its "no" overrules the agent.
 4. **Screen.** If the bucket is a need, the purchase is checked against your own history: does
-   this actually read like a need for you? A doubt turns it into a hold.
+   this actually read like a need for you? A confident doubt turns it into a hold; a weak one is
+   written to the exchange log and not raised, so Bucket does not nag.
 5. **Pushback.** If the bucket is a want, Bucket looks for a concrete reason to wait in your own
    records: it would overdraw the bucket (counting money already on hold), or you bought, let go
    or are already holding something like it in the last 45 days. Each reason is a checkable fact,
@@ -125,7 +126,7 @@ ceiling passed as a filter.
 
 ```bash
 npm run check:payments   # 38 checks: holds, keep, let go, races, expiry, reconciliation, the AI boundary
-npm run check:shop       # 52 checks: agent, second check, screen, rule, declines, injected catalog text
+npm run check:shop       # 55 checks: agent, second check, screen, rule, declines, injected catalog text
 npm run check:ledger     # 29 checks: how holds and refusals become ledger rows, totals and chart sums
 ```
 

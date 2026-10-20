@@ -71,3 +71,7 @@ From the call with Melissa (the idea is hers).
   either way. A setting in the PayPal tab decides where the amount lands in the app; each hold is
   counted once, including holds the clock releases while the app is open.
 - 12 new shop checks and 4 new ledger checks.
+- **Restraint carried over from the Nebius build.** A model's doubt about a need now holds the
+  purchase only when the model is confident (the same floors as `src/engine/restraint.ts` on
+  `main`); a weaker doubt is logged in the exchange log and the purchase goes through. The
+  factual pushback on wants is unchanged: a checkable fact is always worth saying.

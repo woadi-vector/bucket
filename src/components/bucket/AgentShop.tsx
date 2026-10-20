@@ -224,7 +224,11 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
         {screen.ran ? (
           <>
             <span className="font-medium">
-              {screen.agrees ? "Reads like a need." : "Reads like a want."}
+              {screen.withheld
+                ? "No doubt strong enough to raise."
+                : screen.agrees
+                  ? "Reads like a need."
+                  : "Reads like a want."}
             </span>
             {screen.reasoning && (
               <div className="text-xs text-muted-foreground">{screen.reasoning}</div>
