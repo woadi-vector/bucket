@@ -27,7 +27,20 @@ export type BucketState = {
   parentRequests: ParentRequest[];
   savedByPause: number;
   trip: Trip | null;
+  /**
+   * Where money from a released PayPal hold goes in the app. PayPal releases the hold either
+   * way; "bucket" leaves the amount in the bucket it came from, "savings" sets it aside in
+   * Savings so the person can see exactly how much they kept. Absent in older saved states.
+   */
+  releaseTo?: ReleaseTo;
+  /** PayPal holds already counted as released, so a refresh never counts one twice. */
+  releasedHoldIds?: string[];
 };
+
+export type ReleaseTo = "bucket" | "savings";
+
+/** How many released hold ids are remembered. Older ones cannot come back as fresh releases. */
+const RELEASED_HOLD_MEMORY = 200;
 
 export const createInitialState = (): BucketState => ({
   buckets: initialBuckets,
@@ -52,6 +65,8 @@ export type BucketAction =
   | { type: "REMOVE_PENDING"; id: string }
   | { type: "RESTORE_PENDING"; item: PendingWant }
   | { type: "CREDIT_SAVINGS"; amount: number }
+  | { type: "SET_RELEASE_TO"; to: ReleaseTo }
+  | { type: "RELEASE_HOLD"; holdId: string; amount: number }
   | { type: "DEBIT_SAVINGS"; amount: number }
   | { type: "CREATE_BUCKET"; bucket: Bucket }
   | { type: "SET_BUCKET_TAG"; bucketId: string; tag: BucketTag; holdThreshold?: number | null }
@@ -107,6 +122,27 @@ export function bucketReducer(state: BucketState, action: BucketAction): BucketS
         },
         savedByPause: state.savedByPause + action.amount,
       };
+
+    case "SET_RELEASE_TO":
+      return { ...state, releaseTo: action.to };
+
+    /**
+     * A PayPal hold the person let go or the clock released. It always counts toward what was
+     * saved by waiting; it moves into Savings only when the person chose that. Each hold counts
+     * once, however many times the holds list is refreshed.
+     */
+    case "RELEASE_HOLD": {
+      const seen = state.releasedHoldIds ?? [];
+      if (seen.includes(action.holdId)) return state;
+      const releasedHoldIds = [...seen, action.holdId].slice(-RELEASED_HOLD_MEMORY);
+      if ((state.releaseTo ?? "bucket") === "savings") {
+        return {
+          ...bucketReducer(state, { type: "CREDIT_SAVINGS", amount: action.amount }),
+          releasedHoldIds,
+        };
+      }
+      return { ...state, savedByPause: state.savedByPause + action.amount, releasedHoldIds };
+    }
 
     /** Undo of the above. The clamps match the prototype's behaviour exactly. */
     case "DEBIT_SAVINGS":

@@ -17,8 +17,9 @@ import { getSecret } from "@/lib/server-env";
 import { checkBudget, checkGlobalCeiling, recordUsage } from "@/lib/server/budget";
 import { searchProducts, type ProductOption } from "@/lib/server/channel3";
 import { recordChallenge } from "@/lib/server/exchanges";
-import { toPublicHold, type PublicHold } from "@/lib/server/holds";
+import { listHoldsForSession, toPublicHold, type PublicHold } from "@/lib/server/holds";
 import { placeHold } from "@/lib/server/payments";
+import { findPushback, type PastPurchase } from "@/lib/server/pushback";
 import { recordRefusal } from "@/lib/server/refusals";
 import { decidePolicy, type PolicyDecision } from "@/lib/server/policy";
 import { getStore } from "@/lib/server/store";
@@ -68,6 +69,8 @@ export type ShopResult =
       check: { ran: true; fits: true; reason: string } | { ran: false; why: string };
       screen: ShopScreen;
       policy: PolicyDecision;
+      /** Reasons to wait from the person's own records; empty for needs and for clean wants. */
+      pushback: string[];
       hold: PublicHold;
       considered: number;
     }
@@ -244,12 +247,17 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
   // 3. Screen, for need buckets only.
   const screen = tag === "need" ? await screenPurchase(sessionId, product, bucket, state) : skip();
 
+  // 3b. Pushback, for want buckets: concrete reasons from the person's own records.
+  const pushback =
+    tag === "want" ? await wantPushback(sessionId, product, bucket, state) : ([] as string[]);
+
   // 4. Decide.
   const policy = decidePolicy({
     bucketTag: tag,
     amountCents: product.priceCents,
     holdThresholdCents,
     screen: screen.ran ? (screen.agrees ? "agree" : "mismatch") : undefined,
+    pushback,
   });
 
   // 5. Hold, and capture straight away only when the policy passed it.
@@ -263,6 +271,7 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
       amountCents: product.priceCents,
       vaultId,
       verdict: policy.decision === "capture" ? "pass" : "hold",
+      pushback,
     });
     return {
       ok: true,
@@ -274,6 +283,7 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
         : { ran: false, why: check.why },
       screen,
       policy,
+      pushback,
       hold: toPublicHold(hold),
       considered: products.length,
     };
@@ -281,6 +291,61 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
     console.error("[shop] PayPal hold failed", error);
     return { ok: false, reason: "paypal-failed", message: "PayPal did not place the hold." };
   }
+}
+
+/**
+ * Gathers what the person has bought, let go and left waiting, and asks pushback.ts for the
+ * reasons to wait on this want. A failed read of the holds only drops those reasons; the
+ * balance check still runs.
+ */
+async function wantPushback(
+  sessionId: string,
+  product: ProductOption,
+  bucket: Bucket,
+  state: Awaited<ReturnType<ReturnType<typeof getStore>["load"]>>,
+): Promise<string[]> {
+  const holds = await listHoldsForSession(sessionId).catch((error) => {
+    console.error("[shop] could not read holds for pushback", error);
+    return [];
+  });
+  const history: PastPurchase[] = [
+    ...(state?.transactions ?? []).map((t) => ({
+      label: t.label,
+      at: t.timestamp,
+      kind: "bought" as const,
+    })),
+    ...(state?.pending ?? []).map((p) => ({
+      label: p.label,
+      at: p.createdAt,
+      kind: "waiting" as const,
+    })),
+    ...holds.flatMap((h): PastPurchase[] => {
+      if (h.state === "held" || h.state === "deciding") {
+        return [{ label: h.label, at: h.createdAt, kind: "waiting" }];
+      }
+      // A capture is also in the app's transactions once the browser saves; counting it here
+      // too covers the moments before that save lands. The reasons pick the newest match.
+      if (h.state === "captured") {
+        return [{ label: h.label, at: h.decidedAt ?? h.createdAt, kind: "bought" }];
+      }
+      if (h.state === "voided" && h.decidedBy === "user") {
+        return [{ label: h.label, at: h.decidedAt ?? h.createdAt, kind: "let-go" }];
+      }
+      return [];
+    }),
+  ];
+  const heldInBucketCents = holds
+    .filter((h) => h.bucketId === bucket.id && (h.state === "held" || h.state === "deciding"))
+    .reduce((sum, h) => sum + h.amountCents, 0);
+  return findPushback({
+    title: product.title,
+    amountCents: product.priceCents,
+    bucketName: bucket.name,
+    bucketBalanceCents: toCents(bucket.balance),
+    heldInBucketCents,
+    history,
+    now: Date.now(),
+  });
 }
 
 function skip(): ShopScreen {

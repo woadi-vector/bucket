@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, Check, Loader2, Lock, Search, ShieldQuestion, X } from "lucide-react";
+import {
+  Bot,
+  Check,
+  Loader2,
+  Lock,
+  MessageCircleWarning,
+  Search,
+  ShieldQuestion,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/bucket-store";
@@ -231,6 +240,23 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
           </span>
         )}
       </Step>
+      {bucket.tag === "want" && (
+        <Step label="Pushback" icon={<MessageCircleWarning className="h-3 w-3" />}>
+          {result.pushback.length > 0 ? (
+            <ul className="space-y-1">
+              {result.pushback.map((reason, i) => (
+                <li key={i} className="font-medium">
+                  {reason}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-muted-foreground">
+              Checked your balance and recent purchases. Nothing to push back on.
+            </span>
+          )}
+        </Step>
+      )}
       <Step label="Rule">
         <span className="font-medium">{policy.reason}</span>
       </Step>

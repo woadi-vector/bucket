@@ -195,5 +195,33 @@ check(
   ) < 1e-9,
 );
 
+// --- Released holds in the app: counted once, into Savings only when chosen ----------------------
+
+const reducerMod = await bundle("src/lib/bucket/reducer.ts");
+{
+  const { bucketReducer, createInitialState } = reducerMod;
+  const start = createInitialState();
+  const savings = (st) => st.buckets.find((b) => b.id === "b4").balance;
+
+  const kept = bucketReducer(start, { type: "RELEASE_HOLD", holdId: "h1", amount: 89.99 });
+  check(
+    "by default a release counts as saved but the money stays in its bucket",
+    kept.savedByPause === 89.99 && savings(kept) === savings(start),
+  );
+  const again = bucketReducer(kept, { type: "RELEASE_HOLD", holdId: "h1", amount: 89.99 });
+  check("the same hold is never counted twice", again === kept);
+
+  const chose = bucketReducer(start, { type: "SET_RELEASE_TO", to: "savings" });
+  const set = bucketReducer(chose, { type: "RELEASE_HOLD", holdId: "h2", amount: 40 });
+  check(
+    "with Savings chosen, the amount moves into Savings",
+    savings(set) === savings(start) + 40 && set.savedByPause === 40,
+  );
+  check(
+    "the Savings bar does not read the incoming money as spent",
+    set.startingBalances.b4 === start.startingBalances.b4 + 40,
+  );
+}
+
 console.log(failed ? `\n${failed} ledger check(s) failed.` : "\nAll ledger checks passed.");
 process.exitCode = failed ? 1 : 0;

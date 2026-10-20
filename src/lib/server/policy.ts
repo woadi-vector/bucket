@@ -21,6 +21,12 @@ export type PolicyInput = {
    * screen did not run, and the rule decides on the bucket alone.
    */
   screen?: "agree" | "mismatch";
+  /**
+   * Concrete reasons to wait on a want, from the person's own records (see pushback.ts): it
+   * would overdraw the bucket, or something like it was bought, let go or is already on hold.
+   * Any reason holds the want, whatever its price.
+   */
+  pushback?: string[];
 };
 
 export type PolicyDecision = {
@@ -45,6 +51,11 @@ export function decidePolicy(input: PolicyInput): PolicyDecision {
     return { decision: "capture", reason: "Filed under a need. Captured with no pause." };
   }
 
+  const pushback = (input.pushback ?? []).filter((r) => r.trim().length > 0);
+  if (pushback.length > 0) {
+    return { decision: "hold", reason: `${pushback[0]} Holding it so you can decide.` };
+  }
+
   if (input.amountCents >= threshold) {
     return {
       decision: "hold",
@@ -65,6 +76,7 @@ export function parsePolicyInput(data: unknown): PolicyInput | null {
   const amount = d.amountCents;
   const threshold = d.holdThresholdCents;
   const screen = d.screen;
+  const pushback = d.pushback;
   if (tag !== "need" && tag !== "want") return null;
   if (typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0) return null;
   if (amount > 100_000_00) return null;
@@ -75,10 +87,21 @@ export function parsePolicyInput(data: unknown): PolicyInput | null {
     return null;
   }
   if (screen !== undefined && screen !== "agree" && screen !== "mismatch") return null;
+  if (
+    pushback !== undefined &&
+    !(
+      Array.isArray(pushback) &&
+      pushback.length <= 5 &&
+      pushback.every((r) => typeof r === "string" && r.length <= 300)
+    )
+  ) {
+    return null;
+  }
   return {
     bucketTag: tag,
     amountCents: amount,
     holdThresholdCents: threshold as number | undefined,
     screen: screen as PolicyInput["screen"],
+    pushback: pushback as string[] | undefined,
   };
 }

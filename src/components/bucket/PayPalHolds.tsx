@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Clock, ExternalLink, Lock, Sparkles } from "lucide-react";
+import { Clock, ExternalLink, Lock, MessageCircleWarning, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Bucket } from "@/lib/bucket-store";
 import { formatCurrency, resolveBucketTag } from "@/lib/bucket-store";
@@ -14,10 +14,24 @@ type Props = {
   onLetGo: (hold: PublicHold, sourceRect: DOMRect) => void;
   /** Called when a held hold's countdown reaches zero, so the server can apply the clock. */
   onExpire: () => void;
+  /** Where released money goes in the app: back to its bucket, or set aside in Savings. */
+  releaseTo: ReleaseTo;
+  onReleaseTo: (to: ReleaseTo) => void;
 };
 
+type ReleaseTo = "bucket" | "savings";
+
 /** The real money: holds placed at PayPal by the shopping agent, newest first. */
-export function PayPalHolds({ holds, buckets, busyId, onKeep, onLetGo, onExpire }: Props) {
+export function PayPalHolds({
+  holds,
+  buckets,
+  busyId,
+  onKeep,
+  onLetGo,
+  onExpire,
+  releaseTo,
+  onReleaseTo,
+}: Props) {
   const now = useNow();
   const expiredSeen = useRef(new Set<string>());
 
@@ -33,20 +47,27 @@ export function PayPalHolds({ holds, buckets, busyId, onKeep, onLetGo, onExpire 
     return () => window.clearTimeout(t);
   }, [holds, now, onExpire]);
 
+  const setting = <ReleaseSetting value={releaseTo} onChange={onReleaseTo} />;
+
   if (holds.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-border bg-card/40 p-8 text-center">
-        <Lock className="mx-auto h-5 w-5 text-muted-foreground" />
-        <p className="mt-2 text-sm text-muted-foreground">
-          Nothing held at PayPal. Send the agent shopping, and anything it buys from a want bucket
-          over that bucket's threshold waits here as a live PayPal hold.
-        </p>
+      <div className="space-y-3">
+        {setting}
+        <div className="rounded-2xl border border-dashed border-border bg-card/40 p-8 text-center">
+          <Lock className="mx-auto h-5 w-5 text-muted-foreground" />
+          <p className="mt-2 text-sm text-muted-foreground">
+            Nothing held at PayPal. Send the agent shopping, and any want it buys that is over its
+            bucket's threshold, or that Bucket has a reason to question, waits here as a live PayPal
+            hold.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <ul className="space-y-3">
+      <li>{setting}</li>
       <AnimatePresence initial={false}>
         {holds.map((h) => {
           const bucket = buckets.find((b) => b.id === h.bucketId);
@@ -93,6 +114,17 @@ export function PayPalHolds({ holds, buckets, busyId, onKeep, onLetGo, onExpire 
                   <StateLine hold={h} remaining={remaining} />
                 </div>
               </div>
+
+              {h.pushback.length > 0 && (
+                <ul className="mt-3 space-y-1.5 rounded-xl border border-want/30 bg-want/10 px-3 py-2.5">
+                  {h.pushback.map((reason, i) => (
+                    <li key={i} className="flex gap-2 text-sm leading-snug">
+                      <MessageCircleWarning className="mt-0.5 h-4 w-4 shrink-0 text-want" />
+                      <span>{reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
               {/* The PayPal record itself. A judge can set this id beside PayPal's own. */}
               <div className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-secondary/60 px-3 py-2">
@@ -141,6 +173,48 @@ export function PayPalHolds({ holds, buckets, busyId, onKeep, onLetGo, onExpire 
         </a>
       </li>
     </ul>
+  );
+}
+
+/**
+ * Where released money lands in the app. PayPal releases the hold either way; this only decides
+ * whether the amount goes back to its bucket or is set aside in Savings, where it adds up.
+ */
+function ReleaseSetting({
+  value,
+  onChange,
+}: {
+  value: ReleaseTo;
+  onChange: (to: ReleaseTo) => void;
+}) {
+  const option = (to: ReleaseTo, label: string) => (
+    <button
+      type="button"
+      aria-pressed={value === to}
+      onClick={() => onChange(to)}
+      className={
+        "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors " +
+        (value === to
+          ? "bg-card text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground")
+      }
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-secondary/50 px-4 py-3">
+      <div className="text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">
+          When you let a hold go or time runs out,
+        </span>{" "}
+        the money:
+      </div>
+      <div className="inline-flex rounded-xl bg-secondary p-1">
+        {option("bucket", "Stays in its bucket")}
+        {option("savings", "Goes to Savings")}
+      </div>
+    </div>
   );
 }
 

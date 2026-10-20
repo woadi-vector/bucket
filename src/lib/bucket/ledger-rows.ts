@@ -83,7 +83,10 @@ export function toLedgerRows(data: LedgerData): LedgerRow[] {
       outcome,
       group: GROUP_OF[outcome],
       decidedBy: holdDecidedBy(h),
-      note: h.lastError ? `Last PayPal error: ${h.lastError}` : null,
+      note:
+        [h.pushback?.join(" ") || null, h.lastError ? `Last PayPal error: ${h.lastError}` : null]
+          .filter(Boolean)
+          .join(" ") || null,
       authorizationId: h.authorizationId,
       captureId: h.captureId ?? null,
     };

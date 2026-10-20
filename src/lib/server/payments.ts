@@ -75,6 +75,8 @@ export type PlaceHoldInput = {
   vaultId: string;
   /** The screen's decision, already made. "pass" captures at once; "hold" waits. */
   verdict: "pass" | "hold";
+  /** Why it is being held, from pushback.ts. Stored with the hold and shown to the person. */
+  pushback?: string[];
 };
 
 /**
@@ -117,6 +119,7 @@ export async function placeHold(input: PlaceHoldInput): Promise<HoldRow> {
     createdAt: now,
     deadlineAt: now + holdWindowMs(),
     decidedAt: null,
+    pushback: (input.pushback ?? []).map((r) => r.slice(0, 300)).slice(0, 5),
   };
 
   try {

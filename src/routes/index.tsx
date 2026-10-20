@@ -69,11 +69,15 @@ function Index() {
     parentRequests,
     savedByPause,
     trip,
+    releaseTo,
     ui,
   } = useBucketState();
   const actions = useBucketActions();
   const demo = useDemo();
-  const paypal = usePayPalHolds();
+  const paypal = usePayPalHolds({
+    onClockRelease: (h) =>
+      actions.noteClockRelease({ id: h.id, amount: h.amountCents / 100, label: h.label }),
+  });
   const liveHolds = paypal.holds.filter((h) => h.state === "held").length;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -334,6 +338,8 @@ function Index() {
                 buckets={buckets}
                 busyId={paypal.busyId}
                 onExpire={() => void paypal.refresh()}
+                releaseTo={releaseTo ?? "bucket"}
+                onReleaseTo={actions.setReleaseTo}
                 onKeep={async (h) => {
                   const r = await paypal.decide(h.id, "keep");
                   if (r.ok) {
@@ -355,7 +361,11 @@ function Index() {
                 }}
                 onLetGo={async (h, rect) => {
                   const r = await paypal.decide(h.id, "letGo");
-                  if (r.ok) actions.celebrateLetGo(h.amountCents / 100, rect);
+                  if (r.ok)
+                    actions.celebrateLetGo(
+                      { id: h.id, amount: h.amountCents / 100, bucketId: h.bucketId },
+                      rect,
+                    );
                   else
                     toast("PayPal did not release it", {
                       description: "The money is still held. Try again in a moment.",

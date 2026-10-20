@@ -30,14 +30,20 @@ Type "trail running shoes" and a price ceiling. In about ten seconds:
    question: is this product the thing that was requested? Its "no" overrules the agent.
 4. **Screen.** If the bucket is a need, the purchase is checked against your own history: does
    this actually read like a need for you? A doubt turns it into a hold.
-5. **Rule.** Code, not a model, decides: a need passes; a want at or over its bucket's threshold
-   is held; a doubted need is held.
-6. **PayPal.** The order is placed from your saved PayPal wallet with `intent: AUTHORIZE`, so the
+5. **Pushback.** If the bucket is a want, Bucket looks for a concrete reason to wait in your own
+   records: it would overdraw the bucket (counting money already on hold), or you bought, let go
+   or are already holding something like it in the last 45 days. Each reason is a checkable fact,
+   for example "You bought Scend Pro Running Shoes 3 weeks ago."
+6. **Rule.** Code, not a model, decides: a need passes; a want with any pushback is held, however
+   small; a want at or over its bucket's threshold is held; a doubted need is held.
+7. **PayPal.** The order is placed from your saved PayPal wallet with `intent: AUTHORIZE`, so the
    money is reserved, not taken. A pass is captured immediately. A hold waits in the PayPal tab
    with its authorization id and a countdown.
 
 Then you decide. **Keep it** captures the authorization. **Let it go** voids it. Do nothing and
-the clock voids it when the window closes (24 hours in the product, 5 minutes in this demo).
+the clock voids it when the window closes (24 hours in the product, 5 minutes in this demo). A
+setting in the PayPal tab decides where released money lands in the app: it stays in its bucket
+(the default), or it is set aside in Savings so you can see exactly how much waiting kept.
 
 On a live run the agent once picked an oat milk strainer bag for "oat milk", reasoning that it is
 "for making oat milk". The second check overruled it and nothing reached PayPal. That is the
@@ -119,8 +125,8 @@ ceiling passed as a filter.
 
 ```bash
 npm run check:payments   # 38 checks: holds, keep, let go, races, expiry, reconciliation, the AI boundary
-npm run check:shop       # 40 checks: agent, second check, screen, rule, declines, injected catalog text
-npm run check:ledger     # 25 checks: how holds and refusals become ledger rows, totals and chart sums
+npm run check:shop       # 52 checks: agent, second check, screen, rule, declines, injected catalog text
+npm run check:ledger     # 29 checks: how holds and refusals become ledger rows, totals and chart sums
 ```
 
 Both run against fakes that answer with the shapes the real services returned. To run the same

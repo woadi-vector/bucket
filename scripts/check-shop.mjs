@@ -485,6 +485,127 @@ reset();
   check("and nothing reaches PayPal", fake.paypalCalls.length === 0);
 }
 
+// --- Pushback: every want gets a stated reason when the person's records give one ---------------
+
+const pb = await bundle("src/lib/server/pushback.ts");
+{
+  const DAY = 86_400_000;
+  const now = 1_800_000_000_000;
+  const base = {
+    title: "Trail running shoes",
+    amountCents: 3000,
+    bucketName: "Gear & Fun",
+    bucketBalanceCents: 15000,
+    heldInBucketCents: 0,
+    history: [],
+    now,
+  };
+  check("pushback: a clean want has no reasons", pb.findPushback(base).length === 0);
+  const over = pb.findPushback({ ...base, amountCents: 20000 });
+  check(
+    "pushback: over the bucket's balance says by how much",
+    over.length === 1 && over[0].includes("overdraw Gear & Fun by $50.00"),
+    over[0],
+  );
+  const held = pb.findPushback({ ...base, amountCents: 9000, heldInBucketCents: 8999 });
+  check(
+    "pushback: money already on hold counts against the balance",
+    held.length === 1 && held[0].includes("once the purchases already on hold go through"),
+    held[0],
+  );
+  const bought = pb.findPushback({
+    ...base,
+    history: [{ label: "Scend Pro Running Shoes", at: now - 20 * DAY, kind: "bought" }],
+  });
+  check(
+    "pushback: a similar purchase last month is named with when",
+    bought.length === 1 && bought[0] === "You bought Scend Pro Running Shoes 3 weeks ago.",
+    bought[0],
+  );
+  const letGo = pb.findPushback({
+    ...base,
+    history: [{ label: "Brooks Cascadia Trail Running Shoes", at: now - 2 * DAY, kind: "let-go" }],
+  });
+  check(
+    "pushback: a recent let-go is named",
+    letGo[0]?.startsWith("You let Brooks Cascadia"),
+    letGo[0],
+  );
+  const waiting = pb.findPushback({
+    ...base,
+    history: [{ label: "Road running shoes", at: now - 60_000, kind: "waiting" }],
+  });
+  check(
+    "pushback: a similar hold still waiting is named",
+    waiting[0] === "Road running shoes is already on hold, waiting for your answer.",
+    waiting[0],
+  );
+  const old = pb.findPushback({
+    ...base,
+    history: [{ label: "Trail running shoes", at: now - 90 * DAY, kind: "bought" }],
+  });
+  check("pushback: purchases past the lookback window do not count", old.length === 0);
+  const unrelated = pb.findPushback({
+    ...base,
+    history: [{ label: "Organic oat milk, 6 pack", at: now - DAY, kind: "bought" }],
+  });
+  check("pushback: unrelated purchases do not count", unrelated.length === 0);
+  check(
+    "pushback: one shared word is enough only for a one-word title",
+    pb.similar("Headphones", "Sony WH-1000XM5 Headphones") &&
+      !pb.similar("Trail running shoes", "Running socks"),
+  );
+}
+
+// In the shop: a small want with a reason is held, not captured.
+reset();
+{
+  const SESSION2 = "22222222-3333-4444-5555-666666666666";
+  const seeded = persistence.createSeededState();
+  seeded.transactions = [
+    {
+      id: "t-oat",
+      amount: 18.99,
+      label: "Organic oat milk 6 pack",
+      bucketId: "b5",
+      intent: "want",
+      timestamp: Date.now() - 5 * 86_400_000,
+      readinessTag: null,
+      verdict: null,
+    },
+    ...seeded.transactions,
+  ];
+  await store.getStore().save(SESSION2, seeded);
+  fake.agentAnswer = '{"choice": 0, "bucketId": "b5", "reason": "Cheap."}';
+  const r = await shop.runShop({ sessionId: SESSION2, request: "oat milk", maxPriceCents: 2000 });
+  check(
+    "a small want bought days ago is held instead of captured",
+    r.ok && r.hold.state === "held" && paypalMoves().length === 0,
+    r.ok ? r.hold.state : r.reason,
+  );
+  check(
+    "the reason names the earlier purchase and reaches the policy and the hold",
+    r.ok &&
+      r.pushback[0] === "You bought Organic oat milk 6 pack 5 days ago." &&
+      r.policy.reason.startsWith("You bought Organic oat milk") &&
+      r.hold.pushback[0] === r.pushback[0],
+    r.ok ? r.policy.reason : "",
+  );
+}
+
+// A need never gets pushback: the screen decides needs.
+reset();
+fake.agentAnswer = '{"choice": 0, "bucketId": "b1", "reason": "Groceries."}';
+fake.screenVerdict = "need";
+{
+  const r = await run("oat milk", 2000);
+  check(
+    "a need gets no pushback",
+    r.ok && r.pushback.length === 0,
+    r.ok ? r.pushback.join(" ") : r.reason,
+  );
+}
+
 console.log(failures === 0 ? "\nAll shop checks passed." : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);
 

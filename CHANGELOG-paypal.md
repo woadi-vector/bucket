@@ -57,3 +57,17 @@ Each found by running the real services, not by the tests:
   searchable grid, with a CSV export and a pinned total row. A bar chart of dollars by outcome is
   drawn from the grid's filtered rows. Both libraries load on `/ledger` only.
 - **25 ledger checks** (`npm run check:ledger`) on how rows, totals and chart sums are computed.
+
+## Oct 19: pushback on every want, and where released money goes
+
+From the call with Melissa (the idea is hers).
+
+- **Every want gets a stated reason when one exists.** Bucket checks the person's own records:
+  would the purchase overdraw its bucket, counting money already on hold; was something like it
+  bought, let go, or left waiting in the last 45 days. Any reason holds the want, however small,
+  and the reasons are stored with the hold (migration 0007) and shown in the shop card, the PayPal
+  tab and the public ledger. No model is involved: a reason has to be a fact the person can check.
+- **Released money: stays in its bucket, or set aside in Savings.** PayPal releases the hold
+  either way. A setting in the PayPal tab decides where the amount lands in the app; each hold is
+  counted once, including holds the clock releases while the app is open.
+- 12 new shop checks and 4 new ledger checks.

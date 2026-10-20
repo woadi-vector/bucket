@@ -33,6 +33,8 @@ export type HoldRow = {
   createdAt: number;
   deadlineAt: number;
   decidedAt: number | null;
+  /** Why Bucket held it, from the person's own records (pushback.ts). Empty when none. */
+  pushback: string[];
 };
 
 /** Development store, held on globalThis like the rest of src/lib/server. */
@@ -61,7 +63,18 @@ type DbRow = {
   created_at: number;
   deadline_at: number;
   decided_at: number | null;
+  pushback?: string | null;
 };
+
+function parsePushback(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((r): r is string => typeof r === "string").slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
 
 function fromDb(r: DbRow): HoldRow {
   return {
@@ -83,6 +96,7 @@ function fromDb(r: DbRow): HoldRow {
     createdAt: r.created_at,
     deadlineAt: r.deadline_at,
     decidedAt: r.decided_at,
+    pushback: parsePushback(r.pushback),
   };
 }
 
@@ -102,8 +116,8 @@ export async function insertHold(row: HoldRow): Promise<void> {
     .prepare(
       `INSERT INTO holds
          (id, session_id, bucket_id, bucket_tag, label, merchant, amount_cents, currency,
-          order_id, authorization_id, verdict, state, created_at, deadline_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          order_id, authorization_id, verdict, state, created_at, deadline_at, pushback)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,
@@ -120,6 +134,7 @@ export async function insertHold(row: HoldRow): Promise<void> {
       row.state,
       row.createdAt,
       row.deadlineAt,
+      row.pushback.length > 0 ? JSON.stringify(row.pushback) : null,
     )
     .run();
 }

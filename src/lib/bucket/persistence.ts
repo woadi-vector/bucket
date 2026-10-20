@@ -75,8 +75,17 @@ const isParentRequest = (v: unknown): v is ParentRequest =>
 export function validateBucketState(state: unknown): BucketState | null {
   if (!isObject(state)) return null;
 
-  const { buckets, startingBalances, transactions, pending, parentRequests, savedByPause, trip } =
-    state;
+  const {
+    buckets,
+    startingBalances,
+    transactions,
+    pending,
+    parentRequests,
+    savedByPause,
+    trip,
+    releaseTo,
+    releasedHoldIds,
+  } = state;
 
   if (!Array.isArray(buckets) || !buckets.every(isBucket) || buckets.length === 0) return null;
   if (!isObject(startingBalances)) return null;
@@ -85,6 +94,18 @@ export function validateBucketState(state: unknown): BucketState | null {
   if (!Array.isArray(parentRequests) || !parentRequests.every(isParentRequest)) return null;
   if (typeof savedByPause !== "number" || !Number.isFinite(savedByPause)) return null;
   if (trip !== null && !isObject(trip)) return null;
+  // Both are optional so states saved before the setting existed still load.
+  if (releaseTo !== undefined && releaseTo !== "bucket" && releaseTo !== "savings") return null;
+  if (
+    releasedHoldIds !== undefined &&
+    !(
+      Array.isArray(releasedHoldIds) &&
+      releasedHoldIds.length <= 500 &&
+      releasedHoldIds.every((id) => typeof id === "string" && id.length <= 64)
+    )
+  ) {
+    return null;
+  }
 
   return {
     buckets,
@@ -94,6 +115,8 @@ export function validateBucketState(state: unknown): BucketState | null {
     parentRequests,
     savedByPause,
     trip: (trip ?? null) as Trip | null,
+    ...(releaseTo !== undefined ? { releaseTo: releaseTo as "bucket" | "savings" } : {}),
+    ...(releasedHoldIds !== undefined ? { releasedHoldIds: releasedHoldIds as string[] } : {}),
   };
 }
 

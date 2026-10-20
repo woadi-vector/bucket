@@ -20,7 +20,7 @@ import {
 } from "@/lib/bucket-store";
 import { useBucketSounds } from "@/lib/use-bucket-sounds";
 import { useEvent } from "@/lib/use-event";
-import { bucketReducer, createInitialState, type BucketState } from "./reducer";
+import { bucketReducer, createInitialState, type BucketState, type ReleaseTo } from "./reducer";
 import { saveBucketState } from "./server-fns";
 import { requestVerdict } from "./verdict-fns";
 
@@ -109,10 +109,17 @@ export type BucketActions = {
    */
   recordAgentPurchase: (data: PurchaseInput) => void;
   /**
-   * The let-go for a PayPal hold: the coin flies to Savings once PayPal has voided the hold.
-   * Unlike {@link letItGo} there is no undo, because the void cannot be taken back.
+   * The let-go for a PayPal hold, once PayPal has voided it: the coin flies to Savings or back
+   * to its own bucket, whichever the person chose. Unlike {@link letItGo} there is no undo,
+   * because the void cannot be taken back.
    */
-  celebrateLetGo: (amount: number, sourceRect?: DOMRect) => void;
+  celebrateLetGo: (
+    hold: { id: string; amount: number; bucketId: string },
+    sourceRect?: DOMRect,
+  ) => void;
+  /** A hold the clock released while the app was open. Counted once, no coin. */
+  noteClockRelease: (hold: { id: string; amount: number; label: string }) => void;
+  setReleaseTo: (to: ReleaseTo) => void;
   setTab: (tab: Tab) => void;
   setPurchaseOpen: (open: boolean) => void;
   setNewBucketOpen: (open: boolean) => void;
@@ -385,32 +392,55 @@ export function BucketProvider({
     else playWant();
   });
 
-  const celebrateLetGo = useEvent((amount: number, sourceRect?: DOMRect) => {
-    const savingsEl = document.querySelector<HTMLElement>(
-      `[data-bucket-id="${SAVINGS_BUCKET_ID}"]`,
-    );
-    const fallback = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-    const from = sourceRect
-      ? { x: sourceRect.left + sourceRect.width / 2, y: sourceRect.top + sourceRect.height / 2 }
-      : fallback;
-    const target = savingsEl?.getBoundingClientRect();
-    const to = target
-      ? { x: target.left + target.width / 2, y: target.top + target.height / 2 }
-      : fallback;
+  const celebrateLetGo = useEvent(
+    (hold: { id: string; amount: number; bucketId: string }, sourceRect?: DOMRect) => {
+      if ((state.releasedHoldIds ?? []).includes(hold.id)) return;
+      const toSavings = (state.releaseTo ?? "bucket") === "savings";
+      const destination = toSavings ? SAVINGS_BUCKET_ID : hold.bucketId;
+      const destinationName =
+        state.buckets.find((b) => b.id === destination)?.name ??
+        (toSavings ? "Savings" : "its bucket");
+      const targetEl = document.querySelector<HTMLElement>(`[data-bucket-id="${destination}"]`);
+      const fallback = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      const from = sourceRect
+        ? { x: sourceRect.left + sourceRect.width / 2, y: sourceRect.top + sourceRect.height / 2 }
+        : fallback;
+      const target = targetEl?.getBoundingClientRect();
+      const to = target
+        ? { x: target.left + target.width / 2, y: target.top + target.height / 2 }
+        : fallback;
 
-    patchUi({ flying: { key: Date.now(), amount, from, to } });
-    window.setTimeout(() => patchUi({ tab: "buckets" }), 100);
-    window.setTimeout(() => {
-      dispatch({ type: "CREDIT_SAVINGS", amount });
-      patchUi({ flying: null });
-      pulse(SAVINGS_BUCKET_ID);
-      playLetGo();
-    }, 720);
-    toast("Let it go", {
-      description: `${formatCurrency(amount)} released at PayPal → Savings`,
+      patchUi({ flying: { key: Date.now(), amount: hold.amount, from, to } });
+      window.setTimeout(() => patchUi({ tab: "buckets" }), 100);
+      window.setTimeout(() => {
+        dispatch({ type: "RELEASE_HOLD", holdId: hold.id, amount: hold.amount });
+        patchUi({ flying: null });
+        pulse(destination);
+        playLetGo();
+      }, 720);
+      toast("Let it go", {
+        description: toSavings
+          ? `${formatCurrency(hold.amount)} released at PayPal and set aside in Savings`
+          : `${formatCurrency(hold.amount)} released at PayPal; it stays in ${destinationName}`,
+        duration: 5000,
+      });
+    },
+  );
+
+  const noteClockRelease = useEvent((hold: { id: string; amount: number; label: string }) => {
+    if ((state.releasedHoldIds ?? []).includes(hold.id)) return;
+    const toSavings = (state.releaseTo ?? "bucket") === "savings";
+    dispatch({ type: "RELEASE_HOLD", holdId: hold.id, amount: hold.amount });
+    if (toSavings) pulse(SAVINGS_BUCKET_ID);
+    toast("Time ran out", {
+      description: `${hold.label}: ${formatCurrency(hold.amount)} released at PayPal${
+        toSavings ? " and set aside in Savings" : ""
+      }`,
       duration: 5000,
     });
   });
+
+  const setReleaseTo = useEvent((to: ReleaseTo) => dispatch({ type: "SET_RELEASE_TO", to }));
 
   const createParentRequest = useEvent(
     (data: { amount: number; label: string; bucketId: string }) => {
@@ -542,6 +572,8 @@ export function BucketProvider({
       dismissRetraction,
       recordAgentPurchase,
       celebrateLetGo,
+      noteClockRelease,
+      setReleaseTo,
       setTab: (tab) => patchUi({ tab }),
       setPurchaseOpen: (purchaseOpen) => patchUi({ purchaseOpen }),
       setNewBucketOpen: (newBucketOpen) => patchUi({ newBucketOpen }),
@@ -571,6 +603,8 @@ export function BucketProvider({
       dismissRetraction,
       recordAgentPurchase,
       celebrateLetGo,
+      noteClockRelease,
+      setReleaseTo,
       patchUi,
     ],
   );
