@@ -145,7 +145,10 @@ export const initialBuckets: Bucket[] = [
   {
     id: "b2",
     name: "Dining Out",
-    balance: 85,
+    // Sized to hold the seeded fortnight of eating out without going negative. The seed
+    // leans on this bucket, because convenience food is where the habit Bucket is built to
+    // notice actually shows up.
+    balance: 220,
     limit: null,
     ownerType: "self",
     iconKey: "dining",
