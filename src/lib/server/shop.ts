@@ -14,6 +14,7 @@ import {
   type BucketTag,
 } from "@/lib/bucket-store";
 import { getSecret } from "@/lib/server-env";
+import { shortModelName } from "@/lib/bucket-store";
 import { checkBudget, checkGlobalCeiling, recordUsage } from "@/lib/server/budget";
 import { searchProducts, type ProductOption } from "@/lib/server/channel3";
 import { recordChallenge } from "@/lib/server/exchanges";
@@ -63,6 +64,12 @@ export type ShopScreen =
        * purchase is treated as agreed.
        */
       withheld?: true;
+      /**
+       * The model that made the call, named only when it was a spoken disagreement or a plain
+       * agreement from one tier. A doubt that was held back or overruled names no model, so the
+       * card never hints at an argument the app chose to drop (same rule as attribution.ts).
+       */
+      model?: string;
     };
 
 export type ShopResult =
@@ -77,6 +84,11 @@ export type ShopResult =
       policy: PolicyDecision;
       /** Reasons to wait from the person's own records; empty for needs and for clean wants. */
       pushback: string[];
+      /**
+       * Which model did each step, for display. Only for calls a real model answered: a
+       * fallback, a cache hit or the local stub is never credited.
+       */
+      models: { agent?: string; check?: string; provider?: string };
       hold: PublicHold;
       considered: number;
     }
@@ -292,6 +304,15 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
       screen,
       policy,
       pushback,
+      models: {
+        ...(credited(choice.telemetry) ? { agent: shortModelName(choice.telemetry.model!) } : {}),
+        ...(check.ran && credited(check.telemetry)
+          ? { check: shortModelName(check.telemetry.model!) }
+          : {}),
+        ...(choice.telemetry.adapter === "token-factory"
+          ? { provider: "Nebius Token Factory" }
+          : {}),
+      },
       hold: toPublicHold(hold),
       considered: products.length,
     };
@@ -358,6 +379,11 @@ async function wantPushback(
       .filter((p) => p.id !== product.id)
       .map((p) => ({ title: p.title, priceCents: p.priceCents, merchant: p.merchant })),
   });
+}
+
+/** Whether a model call actually answered and can be named on the card. */
+function credited(t: { model?: string; degraded?: boolean; cached?: boolean; adapter?: string }) {
+  return !t.degraded && !t.cached && !!t.model && t.adapter !== "stub";
 }
 
 function skip(): ShopScreen {
@@ -428,5 +454,8 @@ async function screenPurchase(
     ...(exchangeId ? { exchangeId } : {}),
     ...(verdict.cached ? { cached: true } : {}),
     ...(hidden ? { withheld: true as const } : {}),
+    ...(!hidden && !verdict.withheld && verdict.telemetry && credited(verdict.telemetry)
+      ? { model: shortModelName(verdict.telemetry.model) }
+      : {}),
   };
 }

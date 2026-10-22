@@ -12,6 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EfficiencyRouteImport } from './routes/efficiency'
 import { Route as ExchangesRouteImport } from './routes/exchanges'
+import { Route as LedgerRouteImport } from './routes/ledger'
+import { Route as ApiLedgerRouteImport } from './routes/api/ledger'
+import { Route as ApiPolicyCheckRouteImport } from './routes/api/policy/check'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +31,81 @@ const ExchangesRoute = ExchangesRouteImport.update({
   path: '/exchanges',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LedgerRoute = LedgerRouteImport.update({
+  id: '/ledger',
+  path: '/ledger',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiLedgerRoute = ApiLedgerRouteImport.update({
+  id: '/api/ledger',
+  path: '/api/ledger',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPolicyCheckRoute = ApiPolicyCheckRouteImport.update({
+  id: '/api/policy/check',
+  path: '/api/policy/check',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/efficiency': typeof EfficiencyRoute
   '/exchanges': typeof ExchangesRoute
+  '/ledger': typeof LedgerRoute
+  '/api/ledger': typeof ApiLedgerRoute
+  '/api/policy/check': typeof ApiPolicyCheckRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/efficiency': typeof EfficiencyRoute
   '/exchanges': typeof ExchangesRoute
+  '/ledger': typeof LedgerRoute
+  '/api/ledger': typeof ApiLedgerRoute
+  '/api/policy/check': typeof ApiPolicyCheckRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/efficiency': typeof EfficiencyRoute
   '/exchanges': typeof ExchangesRoute
+  '/ledger': typeof LedgerRoute
+  '/api/ledger': typeof ApiLedgerRoute
+  '/api/policy/check': typeof ApiPolicyCheckRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/efficiency' | '/exchanges'
+  fullPaths:
+    | '/'
+    | '/efficiency'
+    | '/exchanges'
+    | '/ledger'
+    | '/api/ledger'
+    | '/api/policy/check'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/efficiency' | '/exchanges'
-  id: '__root__' | '/' | '/efficiency' | '/exchanges'
+  to:
+    | '/'
+    | '/efficiency'
+    | '/exchanges'
+    | '/ledger'
+    | '/api/ledger'
+    | '/api/policy/check'
+  id:
+    | '__root__'
+    | '/'
+    | '/efficiency'
+    | '/exchanges'
+    | '/ledger'
+    | '/api/ledger'
+    | '/api/policy/check'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   EfficiencyRoute: typeof EfficiencyRoute
   ExchangesRoute: typeof ExchangesRoute
+  LedgerRoute: typeof LedgerRoute
+  ApiLedgerRoute: typeof ApiLedgerRoute
+  ApiPolicyCheckRoute: typeof ApiPolicyCheckRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +131,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExchangesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ledger': {
+      id: '/ledger'
+      path: '/ledger'
+      fullPath: '/ledger'
+      preLoaderRoute: typeof LedgerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ledger': {
+      id: '/api/ledger'
+      path: '/api/ledger'
+      fullPath: '/api/ledger'
+      preLoaderRoute: typeof ApiLedgerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/policy/check': {
+      id: '/api/policy/check'
+      path: '/api/policy/check'
+      fullPath: '/api/policy/check'
+      preLoaderRoute: typeof ApiPolicyCheckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +159,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   EfficiencyRoute: EfficiencyRoute,
   ExchangesRoute: ExchangesRoute,
+  LedgerRoute: LedgerRoute,
+  ApiLedgerRoute: ApiLedgerRoute,
+  ApiPolicyCheckRoute: ApiPolicyCheckRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

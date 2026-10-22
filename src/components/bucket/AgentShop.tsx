@@ -197,7 +197,7 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
           <div className="text-xs text-muted-foreground">{product.category}</div>
         )}
       </Step>
-      <Step label="Agent filed it under">
+      <Step label={`Agent filed it under${result.models.agent ? ` · ${result.models.agent}` : ""}`}>
         <span className="inline-flex items-center gap-1.5 font-medium">
           <span
             className="h-1.5 w-1.5 rounded-full"
@@ -208,7 +208,7 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
         <span className="text-muted-foreground">({bucket.tag})</span>
         {agent.reason && <div className="text-xs text-muted-foreground">{agent.reason}</div>}
       </Step>
-      <Step label="Second check">
+      <Step label={`Second check${result.models.check ? ` · ${result.models.check}` : ""}`}>
         {result.check.ran ? (
           <>
             <span className="font-medium">Confirmed it is what you asked for.</span>
@@ -220,7 +220,10 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
           <span className="text-muted-foreground">Not run. {result.check.why}</span>
         )}
       </Step>
-      <Step label="Screen" icon={<ShieldQuestion className="h-3 w-3" />}>
+      <Step
+        label={`Screen${screen.ran && screen.model ? ` · ${screen.model}` : ""}`}
+        icon={<ShieldQuestion className="h-3 w-3" />}
+      >
         {screen.ran ? (
           <>
             <span className="font-medium">
@@ -261,7 +264,7 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
           )}
         </Step>
       )}
-      <Step label="Rule">
+      <Step label="Rule · code, no model">
         <span className="font-medium">{policy.reason}</span>
       </Step>
       <li
@@ -283,6 +286,11 @@ function Steps({ result }: { result: Extract<ShopResult, { ok: true }> }) {
             : "Captured straight away."}
         </p>
       </li>
+      {result.models.provider && (
+        <li className="px-1 text-[11px] text-muted-foreground">
+          Models served by {result.models.provider}. The rule and the PayPal calls are code.
+        </li>
+      )}
     </ol>
   );
 }

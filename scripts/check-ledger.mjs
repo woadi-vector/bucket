@@ -45,7 +45,7 @@ function check(name, ok, detail = "") {
 
 const hold = (over) => ({
   id: over.id,
-  bucketId: "b5",
+  bucketId: "b6",
   bucketTag: "want",
   label: "Shoes",
   merchant: "shop.example",

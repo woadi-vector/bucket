@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { ShoppingBasket, UtensilsCrossed, Backpack, PiggyBank, Wallet } from "lucide-react";
+import { ShoppingBasket, UtensilsCrossed, Backpack, PiggyBank, Wallet, Shirt } from "lucide-react";
 
 export type ReadinessTag = "impulse" | "saw_today" | "over_a_week" | "replacing";
 
@@ -17,13 +17,14 @@ export const SLEEP_THRESHOLD = 40;
  * Buckets get persisted (Phase 2), so a Bucket stores an icon *key*, not the icon
  * component itself — a React component cannot survive a round trip through JSON.
  */
-export type BucketIconKey = "groceries" | "dining" | "kids" | "savings" | "default";
+export type BucketIconKey = "groceries" | "dining" | "kids" | "savings" | "gear" | "default";
 
 const BUCKET_ICONS: Record<BucketIconKey, LucideIcon> = {
   groceries: ShoppingBasket,
   dining: UtensilsCrossed,
   kids: Backpack,
   savings: PiggyBank,
+  gear: Shirt,
   default: Wallet,
 };
 
@@ -62,6 +63,7 @@ const DEFAULT_TAG_BY_ICON: Record<BucketIconKey, BucketTag> = {
   kids: "need",
   savings: "need",
   dining: "want",
+  gear: "want",
   default: "want",
 };
 
@@ -312,14 +314,16 @@ export const initialBuckets: Bucket[] = [
     tag: "need",
   },
   {
-    // Where the shopping agent files gear, gadgets and clothes. A want bucket, so anything
-    // over its threshold waits in Sleep On It as a live PayPal hold.
-    id: "b5",
+    // PayPal entry only. Where the shopping agent files gear, gadgets and clothes: a funded
+    // want bucket, so a small want can go through at once and a larger one waits as a live
+    // PayPal hold. It is not the generic bucket (that is Everything Else, b5, empty on purpose),
+    // so it has its own id and icon and the placement guess never lands on it by elimination.
+    id: "b6",
     name: "Gear & Fun",
     balance: 150,
     limit: null,
     ownerType: "self",
-    iconKey: "default",
+    iconKey: "gear",
     accent: "oklch(0.93 0.03 280)",
     tag: "want",
   },

@@ -130,7 +130,7 @@ globalThis.fetch = async (url, init = {}) => {
     if (/shopping agent/.test(system)) {
       fake.agentPrompts.push(body.messages);
       const content =
-        fake.agentAnswer ?? '{"choice": 0, "bucketId": "b5", "reason": "Best match."}';
+        fake.agentAnswer ?? '{"choice": 0, "bucketId": "b6", "reason": "Best match."}';
       return json(200, {
         choices: [{ finish_reason: "stop", message: { content } }],
         usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 },
@@ -221,9 +221,17 @@ reset();
   );
   check(
     "filed into the bucket the agent named",
-    r.ok && r.bucket.id === "b5" && r.bucket.tag === "want",
+    r.ok && r.bucket.id === "b6" && r.bucket.tag === "want",
   );
   check("the want bucket skips the screen", r.ok && r.screen.ran === false);
+  check(
+    "the card names the agent and checker models, and the provider",
+    r.ok &&
+      r.models.agent === "Nemotron Super" &&
+      r.models.check === "Nemotron Nano" &&
+      r.models.provider === "Nebius Token Factory",
+    r.ok ? JSON.stringify(r.models) : r.reason,
+  );
   check("nothing was captured", paypalMoves().length === 0, fake.paypalCalls.join(" | "));
   check(
     "the price ceiling reached Channel3 and the results",
@@ -245,7 +253,7 @@ reset();
 
 // A small want passes straight through.
 reset();
-fake.agentAnswer = '{"choice": 0, "bucketId": "b5", "reason": "Cheap."}';
+fake.agentAnswer = '{"choice": 0, "bucketId": "b6", "reason": "Cheap."}';
 {
   const r = await run("oat milk", 2000);
   check(
@@ -297,7 +305,7 @@ fake.agentAnswer = '{"choice": 0, "bucketId": "b999", "reason": "Made up."}';
   const r = await run("running shoes", 9000);
   check(
     "a bucket the person does not have is rejected",
-    r.ok && r.bucket.id === "b5" && r.agent.degraded,
+    r.ok && r.bucket.id === "b6" && r.agent.degraded,
   );
 }
 
@@ -314,7 +322,7 @@ fake.agentAnswer = '{"choice": 0, "bucketId": "b3", "reason": "Kids."}';
 
 // A product number off the list falls back too.
 reset();
-fake.agentAnswer = '{"choice": 7, "bucketId": "b5", "reason": "Out of range."}';
+fake.agentAnswer = '{"choice": 7, "bucketId": "b6", "reason": "Out of range."}';
 {
   const r = await run("running shoes", 9000);
   check(
@@ -373,7 +381,7 @@ catalog.unshift({
   category: "Home & Garden > Kitchen & Dining > Kitchen Tools & Utensils > Strainers",
 });
 fake.agentAnswer =
-  '{"choice": 0, "categoryFits": true, "bucketId": "b5", "reason": "For making oat milk."}';
+  '{"choice": 0, "categoryFits": true, "bucketId": "b6", "reason": "For making oat milk."}';
 fake.verifyAnswer =
   '{"isRequestedItem": false, "reason": "A strainer bag is a tool for making oat milk, not oat milk."}';
 {
@@ -612,7 +620,7 @@ reset();
       id: "t-oat",
       amount: 18.99,
       label: "Organic oat milk 6 pack",
-      bucketId: "b5",
+      bucketId: "b6",
       intent: "want",
       timestamp: Date.now() - 5 * 86_400_000,
       readinessTag: null,
@@ -621,7 +629,7 @@ reset();
     ...seeded.transactions,
   ];
   await store.getStore().save(SESSION2, seeded);
-  fake.agentAnswer = '{"choice": 0, "bucketId": "b5", "reason": "Cheap."}';
+  fake.agentAnswer = '{"choice": 0, "bucketId": "b6", "reason": "Cheap."}';
   const r = await shop.runShop({ sessionId: SESSION2, request: "oat milk", maxPriceCents: 2000 });
   check(
     "a small want bought days ago is held instead of captured",

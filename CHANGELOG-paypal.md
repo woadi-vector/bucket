@@ -79,3 +79,19 @@ From the call with Melissa (the idea is hers).
   returned something similar for at least $15 and 25% less, the pushback names it with the
   difference: "The same search found Road running shoes at pace.example for $64.50, $24.50
   less." Same bar as the pricing rules on `main`; the arithmetic is in code.
+
+## Oct 22: matched up with the Nebius build
+
+Carried over from `main` (Melissa and Jason's work on the shared engine): the cheaper option is
+priced in code, not in prose; a seeded history Bucket has grounds to argue with; Everything Else
+starts empty and going over is allowed, with an optional cover; a guessed placement in the
+purchase picker; the contested card names which model screened it; and the public efficiency page.
+
+PayPal-specific on top of that:
+
+- **Gear & Fun moved to its own id (`b6`) and icon.** Both branches had used `b5`; on `main` it
+  is now the empty Everything Else. Gear & Fun stays funded at $150 because the agent demo needs
+  both paths: a small want paid at once, and a larger one held.
+- **The shop card names the model behind each step**: the agent (Nemotron Super), the second
+  check (Nemotron Nano), the screen when it spoke, and the provider. The rule step says it is
+  code. A fallback, a cache hit or a held-back doubt is never credited to a model.
