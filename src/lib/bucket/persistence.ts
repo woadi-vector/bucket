@@ -142,6 +142,21 @@ const DAY = 24 * HOUR;
  * the insight panels are meaningless with no history, and the pending tray needs an item
  * so the let-it-go moment is one click away.
  *
+ * The shape of this history is load-bearing, not decoration. Bucket judges a label against
+ * the person's own past labels, and the model is told to speak up when someone calls
+ * something a need and their history shows they routinely call comforts needs. An honestly
+ * labelled history therefore produces an app that agrees with everything: a visitor would
+ * have to log four or five purchases of their own before Bucket had grounds to contest one,
+ * and the thing the whole app is for would never happen in the time anyone gives it.
+ *
+ * So the habit is here, on purpose. Four of these call convenience food a need: a skipped
+ * packed lunch, a coffee on the way in, snacks bought with the groceries, takeout at the end
+ * of a long day. None of them are absurd, and that is the point. This is what the stretch
+ * actually looks like in a real person's week, and Bucket is supposed to notice it without
+ * being snide about it. The genuine needs and the honestly labelled wants are here too,
+ * because a history of nothing but self-deception would be a strawman and would also teach
+ * the model the wrong thing.
+ *
  * Note this is NOT what "Play demo" resets to — the scripted walkthrough tells its story
  * from zero and uses {@link createInitialState}.
  */
@@ -152,16 +167,40 @@ export function createSeededState(now: number = Date.now()): BucketState {
       label: "Weekly shop",
       bucketId: "b1",
       intent: "need",
-      timestamp: now - 6 * DAY,
+      timestamp: now - 11 * DAY,
       readinessTag: null,
+    },
+    {
+      amount: 16,
+      label: "Lunch out, no time to pack one",
+      bucketId: "b2",
+      intent: "need",
+      timestamp: now - 9 * DAY,
+      readinessTag: "impulse",
     },
     {
       amount: 31,
       label: "Ramen with friends",
       bucketId: "b2",
       intent: "want",
-      timestamp: now - 4 * DAY,
+      timestamp: now - 7 * DAY,
       readinessTag: "saw_today",
+    },
+    {
+      amount: 9,
+      label: "Coffee and a pastry before work",
+      bucketId: "b2",
+      intent: "need",
+      timestamp: now - 6 * DAY,
+      readinessTag: "impulse",
+    },
+    {
+      amount: 27,
+      label: "Snacks and energy drinks",
+      bucketId: "b1",
+      intent: "need",
+      timestamp: now - 4 * DAY,
+      readinessTag: "impulse",
     },
     {
       amount: 24,
@@ -170,6 +209,14 @@ export function createSeededState(now: number = Date.now()): BucketState {
       intent: "need",
       timestamp: now - 2 * DAY,
       readinessTag: null,
+    },
+    {
+      amount: 34,
+      label: "Takeout, too tired to cook",
+      bucketId: "b2",
+      intent: "need",
+      timestamp: now - 1 * DAY,
+      readinessTag: "impulse",
     },
     {
       amount: 6,
