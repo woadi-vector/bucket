@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createTokenFactoryAdapter, judgeTransaction, reconsiderTransaction } from "@/engine";
-import type { ReconsiderRequest, Verdict, VerdictRequest } from "@/engine";
+import type { ReconsiderRequest, Verdict, VerdictRequest, VerdictTelemetry } from "@/engine";
+import type { VerdictAttribution } from "@/lib/bucket-store";
+import { attributionFor } from "@/lib/attribution";
 import { getSecret } from "@/lib/server-env";
 import { getOrCreateSessionId } from "@/lib/server/session";
 import { checkBudget, checkGlobalCeiling, recordUsage } from "@/lib/server/budget";
@@ -17,7 +19,12 @@ import { createTavilySource } from "@/lib/server/tavily";
 export type VerdictResponse = Pick<
   Verdict,
   "agrees" | "verdict" | "confidence" | "reasoning" | "question" | "explanationAccepted"
-> & { cached?: true; withheld?: true; exchangeId?: string };
+> & {
+  cached?: true;
+  withheld?: true;
+  exchangeId?: string;
+  attribution?: VerdictAttribution;
+};
 
 /**
  * Strips telemetry and drops absent optional fields rather than sending nulls.
@@ -33,10 +40,17 @@ export type VerdictResponse = Pick<
  * here looking exactly like any other agreement, because as far as the person is concerned
  * it is one. The dropped contest exists only in the log.
  */
-function toResponse(verdict: Verdict, exchangeId?: string): VerdictResponse {
+function toResponse(
+  verdict: Verdict,
+  exchangeId?: string,
+  attribution?: VerdictAttribution,
+): VerdictResponse {
   const hidden = Boolean(verdict.withheld) && !verdict.agrees;
 
   return {
+    // `attributionFor` has already applied the spoken-contest rule, so an overruled or
+    // withheld verdict arrives here with nothing to attach.
+    ...(attribution ? { attribution } : {}),
     agrees: verdict.agrees,
     verdict: verdict.verdict,
     confidence: verdict.confidence,
@@ -129,6 +143,10 @@ export const requestVerdict = createServerFn({ method: "POST" })
       return logged(await judgeTransaction(data), data, sessionId);
     }
 
+    // Every model call that answers, in the order they happened. The engine returns only the
+    // final verdict, so this is where the screening model's identity survives an escalation.
+    const calls: VerdictTelemetry[] = [];
+
     const verdict = await judgeTransaction(data, {
       adapter: createTokenFactoryAdapter({ apiKey }),
 
@@ -144,14 +162,17 @@ export const requestVerdict = createServerFn({ method: "POST" })
 
       // Fires once per model call, so an escalated verdict writes two rows and the ledger
       // shows the split rather than only the tier that had the last word.
-      onUsage: ({ telemetry, agrees }) => recordUsage({ sessionId, telemetry, agreed: agrees }),
+      onUsage: ({ telemetry, agrees }) => {
+        calls.push(telemetry);
+        recordUsage({ sessionId, telemetry, agreed: agrees });
+      },
 
       // Across every session. Asked by the engine before each Token Factory call; once it
       // trips, the engine stops calling the model and serves a cached verdict instead.
       checkCeiling: checkGlobalCeiling,
     });
 
-    return logged(verdict, data, sessionId);
+    return logged(verdict, data, sessionId, attributionFor(verdict, calls));
   });
 
 /**
@@ -173,6 +194,7 @@ async function logged(
   verdict: Verdict,
   request: VerdictRequest,
   sessionId?: string,
+  attribution?: VerdictAttribution,
 ): Promise<VerdictResponse> {
   if (verdict.agrees && !verdict.withheld) return toResponse(verdict);
   const id = await recordChallenge({
@@ -185,7 +207,7 @@ async function logged(
   // belongs in a response that asked the person something. A withheld contest asked nothing
   // and has nothing to attach: sending its id would hand the browser a handle to a row the
   // person was deliberately not shown.
-  return toResponse(verdict, verdict.withheld ? undefined : id);
+  return toResponse(verdict, verdict.withheld ? undefined : id, attribution);
 }
 
 /**
