@@ -11,11 +11,78 @@ import {
   SLEEP_THRESHOLD,
   resolveBucketIcon,
 } from "@/lib/bucket-store";
+import { orderForPlacement } from "@/lib/placement";
 import { cn } from "@/lib/utils";
 import { Check, Moon, Zap, Send } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type Step = "amount" | "intent" | "readiness" | "bucket" | "intercept" | "askParent" | "confirm";
+
+/**
+ * One selectable bucket in the picker, showing what it would be left with.
+ *
+ * The projection is the point of this row. It has shown `balance → balance - amount` since
+ * the prototype, with the result in red when it would go under, which is where the cost of
+ * a purchase is supposed to register: beside the alternatives, before anything is committed,
+ * with no model involved and nothing blocked.
+ */
+function BucketOption({
+  bucket,
+  amount,
+  onPick,
+  emphasized,
+}: {
+  bucket: Bucket;
+  amount: number;
+  onPick: () => void;
+  /** The guessed bucket, which sits on its own above the rest. */
+  emphasized?: boolean;
+}) {
+  const after = bucket.balance - amount;
+  const negative = after < 0;
+  const empty = bucket.balance <= 0;
+  const Icon = resolveBucketIcon(bucket.iconKey);
+
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className={cn(
+        "flex w-full items-center justify-between gap-3 p-4 rounded-xl border bg-card transition-all active:scale-[0.98] text-left",
+        "hover:border-primary/50 hover:bg-secondary/50",
+        emphasized ? "border-primary/40 ring-1 ring-primary/20" : "border-border",
+      )}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center"
+          style={{ backgroundColor: bucket.accent }}
+        >
+          <Icon className="h-4 w-4 text-foreground/80" />
+        </div>
+        <div className="min-w-0">
+          <div className="font-medium truncate">{bucket.name}</div>
+          <div className="text-xs text-muted-foreground tabular-nums">
+            {formatCurrency(bucket.balance)} →{" "}
+            <span className={cn(negative && "text-destructive")}>{formatCurrency(after)}</span>
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {empty && (
+          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground font-medium">
+            Empty
+          </span>
+        )}
+        {bucket.ownerType === "child" && (
+          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-accent text-accent-foreground font-medium">
+            Kids
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
 
 type Props = {
   open: boolean;
@@ -80,6 +147,10 @@ export function PurchaseFlow({
   const amt = parseFloat(amount);
   const amtValid = !isNaN(amt) && amt > 0 && label.trim().length > 0;
   const selectedBucket = buckets.find((b) => b.id === bucketId) ?? null;
+
+  // Where the label says this belongs, worked out in code from the label alone. Recomputed
+  // as the label changes rather than held in state, so it cannot go stale against an edit.
+  const { guess, rest } = orderForPlacement(label, buckets);
 
   const pickBucket = (b: Bucket) => {
     setBucketId(b.id);
@@ -293,42 +364,58 @@ export function PurchaseFlow({
                 <p className="mt-1 text-sm text-muted-foreground">
                   {formatCurrency(amt)} · {label}
                 </p>
-                <div className="mt-5 grid gap-2 max-h-[50vh] overflow-y-auto pr-1">
-                  {buckets.map((b) => {
-                    const after = b.balance - amt;
-                    const negative = after < 0;
-                    const Icon = resolveBucketIcon(b.iconKey);
-                    return (
-                      <button
-                        key={b.id}
-                        onClick={() => pickBucket(b)}
-                        className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary/50 hover:bg-secondary/50 transition-all active:scale-[0.98] text-left"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className="h-9 w-9 shrink-0 rounded-lg flex items-center justify-center"
-                            style={{ backgroundColor: b.accent }}
-                          >
-                            <Icon className="h-4 w-4 text-foreground/80" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">{b.name}</div>
-                            <div className="text-xs text-muted-foreground tabular-nums">
-                              {formatCurrency(b.balance)} →{" "}
-                              <span className={cn(negative && "text-destructive")}>
-                                {formatCurrency(after)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        {b.ownerType === "child" && (
-                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-accent text-accent-foreground font-medium">
-                            Kids
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+                {/*
+                  Two groups rather than one list. The guessed bucket goes first under its
+                  own heading, because filing a purchase and funding one are different
+                  questions and running them together as a flat list is what made choosing
+                  feel arbitrary. The rest follow with what each would be left with, which is
+                  the comparison that does the work: it is read, not necessarily chosen, and
+                  seeing `$0 → -$250` beside `Groceries $283 → $33` is the cost landing while
+                  there is still time to feel it.
+                */}
+                <div className="mt-5 max-h-[50vh] overflow-y-auto pr-1">
+                  {guess ? (
+                    <>
+                      <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Where this goes
+                      </p>
+                      <div className="mt-2">
+                        <BucketOption
+                          bucket={guess}
+                          amount={amt}
+                          onPick={() => pickBucket(guess)}
+                          emphasized
+                        />
+                      </div>
+                      <p className="mt-5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Or take it from
+                      </p>
+                      <div className="mt-2 grid gap-2">
+                        {rest.map((b) => (
+                          <BucketOption
+                            key={b.id}
+                            bucket={b}
+                            amount={amt}
+                            onPick={() => pickBucket(b)}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    // No guess: the label hit two categories at once, so the list keeps its
+                    // own order rather than putting a coin-flip at the top where momentum
+                    // would pick it.
+                    <div className="grid gap-2">
+                      {buckets.map((b) => (
+                        <BucketOption
+                          key={b.id}
+                          bucket={b}
+                          amount={amt}
+                          onPick={() => pickBucket(b)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

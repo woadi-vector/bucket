@@ -26,7 +26,8 @@
     "check:efficiency": "node scripts/check-efficiency.mjs",
     "check:pricing": "node scripts/check-pricing.mjs",
     "check:seed": "node scripts/check-seed.mjs",
-    "check:cover": "node scripts/check-cover.mjs"
+    "check:cover": "node scripts/check-cover.mjs",
+    "check:placement": "node scripts/check-placement.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
