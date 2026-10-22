@@ -479,6 +479,101 @@ const check = (name, cond, detail = "") => {
   }
 }
 
+// 9b. Money: the app does the subtraction, the model is forbidden from doing its own.
+{
+  const base = {
+    purchase: { amount: 260, label: "Headphones", intent: "need", readinessTag: "replacing" },
+    history: [],
+    question: "What changed since the last pair?",
+    priorVerdict: "want",
+    explanation: "The old pair broke this morning",
+  };
+
+  let promptSeen = "";
+  const capturing = {
+    name: "fixture",
+    async complete(req) {
+      promptSeen = req.messages.map((m) => m.content).join("\n");
+      return {
+        text: '{"verdict":"want","confidence":0.8,"reasoning":"There is a repair."}',
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const sourceOf = (evidence) => ({ name: "fixture", search: async () => evidence });
+
+  // A priced page, and a summary quoting a different number. The item wins: a figure in the
+  // provider's prose cannot be attributed to a page the person could open.
+  {
+    const v = await reconsiderTransaction(base, {
+      adapter: capturing,
+      evidence: sourceOf({
+        query: "Headphones repair cost vs replacement",
+        provider: "fixture",
+        summary: "Replacement earpads for this model run about $40.",
+        items: [{ title: "Earpad kit", url: "https://example.com/pads", snippet: "$39.99" }],
+      }),
+    });
+
+    check("money: the comparison reaches the prompt", promptSeen.includes("$39.99"));
+    check(
+      "money: the saving was computed here, not by the model",
+      promptSeen.includes("$220.01"),
+      "260 - 39.99",
+    );
+    check(
+      "money: the model is told to use those numbers or none",
+      promptSeen.includes("worked out by the app") && promptSeen.includes("recompute"),
+    );
+    check(
+      "money: the provider's own figure is not the one used",
+      !promptSeen.includes("a difference of $220.00"),
+      "the summary's $40 would give $220.00",
+    );
+    check("money: the price is recorded", v.telemetry?.evidence?.foundPrice === 39.99);
+    check(
+      "money: the saving is recorded",
+      Math.abs(v.telemetry.evidence.savingVsPurchase - 220.01) < 1e-9,
+      `${v.telemetry?.evidence?.savingVsPurchase}`,
+    );
+    check(
+      "money: the page it came from is recorded",
+      v.telemetry?.evidence?.foundAt === "https://example.com/pads",
+    );
+  }
+
+  // Results with nothing priceable in them. The model must be forbidden a figure rather than
+  // left to improvise one, which is the state this whole module exists to prevent.
+  {
+    promptSeen = "";
+    const v = await reconsiderTransaction(base, {
+      adapter: capturing,
+      evidence: sourceOf({
+        query: "Headphones repair cost vs replacement",
+        provider: "fixture",
+        items: [
+          {
+            title: "How to care for earpads",
+            url: "https://example.com/care",
+            snippet: "Keep them dry.",
+          },
+        ],
+      }),
+    });
+
+    check(
+      "money: with no price found, the model is told to state none",
+      promptSeen.includes("state no dollar amount"),
+    );
+    check(
+      "money: nothing is recorded when nothing was priced",
+      v.telemetry?.evidence?.foundPrice === undefined &&
+        v.telemetry?.evidence?.savingVsPurchase === undefined,
+    );
+    check("money: the lookup itself is still recorded", v.telemetry?.evidence?.resultCount === 1);
+  }
+}
+
 // 10. Restraint: disagreeing and saying so out loud are two separate decisions.
 {
   const fixed = (verdict, confidence) => ({

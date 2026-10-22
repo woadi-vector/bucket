@@ -77,6 +77,16 @@ export type EvidenceTelemetry = {
   /** How many results were put in front of the model. Zero when only a summary came back. */
   resultCount: number;
   latencyMs: number;
+  /**
+   * The cheaper option the app priced, when it found one it was willing to stand behind.
+   *
+   * Recorded because this is the one number the app states about someone else's money, and a
+   * claim like that is only worth making if the page it came from can be opened afterwards.
+   * Absent means no comparison was made, and in that case no figure was shown either.
+   */
+  foundPrice?: number;
+  savingVsPurchase?: number;
+  foundAt?: string;
 };
 
 export type TokenUsage = {

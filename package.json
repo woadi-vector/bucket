@@ -23,7 +23,8 @@
     "check:ledger": "node scripts/check-ledger.mjs",
     "check:shop": "node scripts/check-shop.mjs",
     "probe:shop": "node scripts/probe-shop.mjs",
-    "check:efficiency": "node scripts/check-efficiency.mjs"
+    "check:efficiency": "node scripts/check-efficiency.mjs",
+    "check:pricing": "node scripts/check-pricing.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",

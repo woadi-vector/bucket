@@ -19,6 +19,7 @@ import { parseVerdict, VerdictParseError } from "./parse";
 import { createStubAdapter } from "./stub-adapter";
 import { buildEvidenceQuery, type Evidence, type EvidenceSource } from "./evidence";
 import { withholdOverruled, withholdSustained } from "./restraint";
+import { findCheaperOption, type PriceFinding } from "./pricing";
 import type {
   CeilingStatus,
   EvidenceTelemetry,
@@ -248,7 +249,12 @@ export async function reconsiderTransaction(
   try {
     response = await adapter.complete({
       model: tier === "stub" ? "stub" : MODELS.ultra,
-      messages: buildReconsiderPrompt(request, options.now, found?.evidence),
+      messages: buildReconsiderPrompt(
+        request,
+        options.now,
+        found?.evidence,
+        found?.finding ?? undefined,
+      ),
       maxTokens: MAX_TOKENS,
       signal: options.signal,
     });
@@ -302,7 +308,9 @@ export async function reconsiderTransaction(
 async function gatherEvidence(
   request: ReconsiderRequest,
   options: EngineOptions,
-): Promise<{ evidence: Evidence; telemetry: EvidenceTelemetry } | undefined> {
+): Promise<
+  { evidence: Evidence; finding: PriceFinding | null; telemetry: EvidenceTelemetry } | undefined
+> {
   const source = options.evidence;
   if (!source) return undefined;
 
@@ -323,12 +331,24 @@ async function gatherEvidence(
   // use it, so the engine does not take the provider's word for having found something.
   if (!evidence || (!evidence.summary && evidence.items.length === 0)) return undefined;
 
+  // The arithmetic happens here, before any model sees the results, so the only figures the
+  // person can be shown are ones this process computed from a page it can name.
+  const finding = findCheaperOption(evidence, request.purchase.amount);
+
   return {
     evidence,
+    finding,
     telemetry: {
       provider: evidence.provider,
       query: evidence.query,
       resultCount: evidence.items.length,
+      ...(finding
+        ? {
+            foundPrice: finding.amount,
+            savingVsPurchase: finding.saving,
+            foundAt: finding.source.url,
+          }
+        : {}),
       latencyMs: Date.now() - startedAt,
     },
   };
