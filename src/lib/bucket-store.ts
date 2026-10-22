@@ -46,6 +46,49 @@ export type Bucket = {
 export type VerdictResponse = "retracted" | "overridden";
 
 /**
+ * Which tiers answered, for display on a contested card.
+ *
+ * The one deliberate exception to telemetry staying server-side, and it is narrow: model
+ * identifiers only, never token counts, never cost. The reason it exists is that the whole
+ * claim of this app is that it escalates on human disagreement rather than on task
+ * difficulty, and a person looking at a contested card has no way to tell that two different
+ * models were involved in producing it. Aggregate numbers on `/efficiency` describe the
+ * pattern; this names what happened in the single case being looked at.
+ *
+ * Attached only to a spoken contest. A withheld or overruled verdict leaves the server
+ * looking like an ordinary agreement by design, and naming an escalation on one would
+ * announce the contest that was deliberately dropped.
+ */
+export type VerdictAttribution = {
+  /** The cheap tier that screened the purchase. A raw model id, as the adapter reported it. */
+  screened: string;
+  /** The expensive tier that sustained the contest, when one was consulted. */
+  adjudicated?: string;
+  /** Which adapter answered, so the card only claims real infrastructure. */
+  provider?: string;
+};
+
+/**
+ * A model id shortened for display, falling back to the id itself.
+ *
+ * Deliberately forgiving rather than exhaustive. The raw identifier travels from the engine
+ * so the card can never name a model that did not run, and this only makes it readable:
+ * `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` becomes `Nemotron Nano`. An unrecognized id comes
+ * back verbose rather than wrong, which is the right way round for a label that is making a
+ * factual claim about what just happened.
+ */
+export function shortModelName(model: string): string {
+  const name = model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model;
+  const size = name.match(/\b(nano|mini|small|super|ultra|large)\b/i)?.[1];
+
+  if (/nemotron/i.test(name) && size) {
+    return `Nemotron ${size[0].toUpperCase()}${size.slice(1).toLowerCase()}`;
+  }
+
+  return name;
+}
+
+/**
  * The app's view of an engine verdict: the four contract fields and nothing else.
  *
  * Declared here rather than imported from `@/engine` because this is deliberately a
@@ -69,6 +112,13 @@ export type PurchaseVerdict = {
    * surfacing anything, not as a style hint.
    */
   withheld?: boolean;
+  /**
+   * Which tiers produced this verdict. Present only on a spoken contest.
+   *
+   * Carries model identifiers and nothing else: no token counts, no cost. See
+   * {@link VerdictAttribution} for why this one piece of telemetry crosses to the browser.
+   */
+  attribution?: VerdictAttribution;
 };
 
 export type Transaction = {

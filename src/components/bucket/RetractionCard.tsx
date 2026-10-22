@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Transaction, formatCurrency } from "@/lib/bucket-store";
+import { Transaction, formatCurrency, shortModelName } from "@/lib/bucket-store";
 import { Moon, Scale } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -78,6 +78,36 @@ export function RetractionCard({
             <blockquote className="mt-5 rounded-2xl bg-secondary/60 px-4 py-3.5 text-sm leading-relaxed text-foreground">
               {verdict.reasoning}
             </blockquote>
+
+            {/*
+              Who actually said it.
+
+              Sits under the argument rather than at the top because it is provenance, not a
+              headline: the disagreement is the point and this says what produced it. It is
+              also the only place in the app where the tiering is visible on a single case.
+              `/efficiency` shows the aggregate pattern, but a person looking at one contested
+              purchase has no way to tell two models were involved, which is precisely the
+              claim the architecture rests on: escalation follows human disagreement, not task
+              difficulty. The provider is named only when a real adapter answered, so this can
+              never credit infrastructure that was not used.
+            */}
+            {verdict.attribution && (
+              <p className="mt-2.5 text-center text-[11px] leading-relaxed text-muted-foreground">
+                Screened by{" "}
+                <span className="text-foreground/75 font-medium">
+                  {shortModelName(verdict.attribution.screened)}
+                </span>
+                {verdict.attribution.adjudicated && (
+                  <>
+                    , escalated to{" "}
+                    <span className="text-foreground/75 font-medium">
+                      {shortModelName(verdict.attribution.adjudicated)}
+                    </span>
+                  </>
+                )}
+                {verdict.attribution.provider === "token-factory" && " on Nebius Token Factory"}
+              </p>
+            )}
 
             <div className="mt-6 grid gap-2">
               <Button onClick={onRetract} className="h-12 rounded-xl text-base">
