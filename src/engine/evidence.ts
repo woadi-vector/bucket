@@ -1,4 +1,5 @@
 import type { PurchaseUnderReview } from "./types";
+import { describeFinding, type PriceFinding } from "./pricing";
 
 /**
  * Looking things up in the world before deciding.
@@ -163,7 +164,7 @@ export function shapeEvidence(args: {
  * only true when there is evidence, and a model reading standing rules about search results
  * that are not present tends to invent some.
  */
-export function describeEvidence(evidence: Evidence): string {
+export function describeEvidence(evidence: Evidence, finding?: PriceFinding): string {
   const lines = [
     "You also looked something up. This is what came back:",
     "",
@@ -176,15 +177,34 @@ export function describeEvidence(evidence: Evidence): string {
     lines.push(`- ${item.title}${item.snippet ? `: ${item.snippet}` : ""}`);
   }
 
+  if (finding) {
+    lines.push("", describeFinding(finding));
+  }
+
   lines.push(
     "",
     "How to use that. If it shows a cheaper way to solve the problem the person described, say",
-    "so plainly and name the number, because that is useful to them whatever you decide. But a",
-    "cheaper option existing does not settle the question: people decline repairs for reasons",
-    "that are none of your business, and a search result can be wrong, stale, or about a",
-    "different model of the thing. If the results do not bear on what they told you, ignore",
-    "them and do not mention them. Finding nothing is not evidence that nothing exists, so never",
-    "treat an empty or unhelpful search as a point against the person.",
+    "so plainly, because that is useful to them whatever you decide. But a cheaper option",
+    "existing does not settle the question: people decline repairs for reasons that are none of",
+    "your business, and a search result can be wrong, stale, or about a different model of the",
+    "thing. If the results do not bear on what they told you, ignore them and do not mention",
+    "them. Finding nothing is not evidence that nothing exists, so never treat an empty or",
+    "unhelpful search as a point against the person.",
+  );
+
+  // The one hard rule about money. Figures reach the person from the line above, which was
+  // computed from the purchase amount and a price read out of a named page, or they do not
+  // reach the person at all.
+  lines.push(
+    "",
+    finding
+      ? "About the figures. The comparison above was worked out by the app, from a price on a page" +
+          " it can name. Use those exact numbers or none: do not round them, recompute them, add" +
+          " shipping, or estimate anything beside them. You may say what the cheaper option is and" +
+          " whether it fits what they described."
+      : "About the figures. No price comparison was worked out here, so state no dollar amount of" +
+          " any kind. Do not read a number out of a result and do not estimate one. You can say an" +
+          " option appears to exist without pricing it.",
   );
 
   return lines.join("\n");
