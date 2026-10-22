@@ -111,6 +111,26 @@ export type PendingWant = {
   verdict?: PurchaseVerdict | null;
 };
 
+/**
+ * A deliberate move of money from one bucket to another, to clear a negative.
+ *
+ * Kept out of {@link Transaction} on purpose. The verdict prompt is handed the last twenty
+ * transactions as the person's spending history, and a transfer is not a purchase: it has
+ * no intent to judge and no readiness to weigh, and feeding it to the model would teach it
+ * that someone "bought" $250 of Groceries they never ate. Covers live in their own list,
+ * nothing in the engine reads them, and the ledger interleaves them for display so the
+ * bucket totals can still be reconciled by anyone who adds them up.
+ */
+export type Cover = {
+  id: string;
+  amount: number;
+  /** The bucket the money came out of. */
+  fromBucketId: string;
+  /** The bucket that was underwater. */
+  toBucketId: string;
+  timestamp: number;
+};
+
 export type ParentRequest = {
   id: string;
   amount: number;
@@ -162,6 +182,39 @@ export const initialBuckets: Bucket[] = [
     ownerType: "child",
     iconKey: "kids",
     accent: "oklch(0.92 0.05 35)",
+  },
+  {
+    /**
+     * Everything that is not food, childcare or saved, and deliberately empty.
+     *
+     * Two problems are being solved at once here, and they pull in opposite directions.
+     *
+     * Without a bucket like this, a shoe or a pair of headphones has no home, and the
+     * first thing anyone does on arriving is pause over which of four wrong buckets to
+     * charge it to. That hesitation lands in the opening seconds, before Bucket has said
+     * anything, and it is friction about filing rather than about money.
+     *
+     * But funding it would be worse. A bucket with $300 in it that nothing else competes
+     * for is a slush fund, and a slush fund is where the point of this app goes to die:
+     * every unclassifiable purchase lands somewhere painless and nothing is ever traded
+     * against anything. The feeling Bucket exists to produce is not that a card was
+     * charged, it is that groceries got smaller.
+     *
+     * So it starts at zero. Choosing it is obvious and instant, and the purchase picker
+     * then shows `$0 → -$250` in red beside `Groceries $283 → $33`, which is the whole
+     * argument made without a modal, a warning or a block. Spending past zero is allowed.
+     * The negative stands on the card afterwards as a running tab of everything bought
+     * that fit nowhere, and covering it is an act the person chooses, not one the app
+     * extracts. Nothing here prevents a purchase; it only makes the cost legible while
+     * there is still time to feel it.
+     */
+    id: "b5",
+    name: "Everything Else",
+    balance: 0,
+    limit: null,
+    ownerType: "self",
+    iconKey: "default",
+    accent: "oklch(0.92 0.035 275)",
   },
   {
     id: "b4",

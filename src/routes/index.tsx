@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useRef } from "react";
 import { formatCurrency } from "@/lib/bucket-store";
 import { BucketCard } from "@/components/bucket/BucketCard";
+import { CoverPanel } from "@/components/bucket/CoverPanel";
 import { PurchaseFlow } from "@/components/bucket/PurchaseFlow";
 import { NewBucketModal } from "@/components/bucket/NewBucketModal";
 import { PendingTray } from "@/components/bucket/PendingTray";
@@ -274,15 +275,20 @@ function Index() {
             className="mt-4"
           >
             {ui.tab === "buckets" && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {buckets.map((b) => (
-                  <BucketCard
-                    key={b.id}
-                    bucket={b}
-                    startingBalance={startingBalances[b.id] ?? b.balance}
-                    justUpdated={ui.justUpdatedId === b.id}
-                  />
-                ))}
+              <div className="grid gap-3">
+                {/* Above the grid, because a deficit is the one thing on this tab worth
+                    reading before the balances it already explains. */}
+                <CoverPanel buckets={buckets} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {buckets.map((b) => (
+                    <BucketCard
+                      key={b.id}
+                      bucket={b}
+                      startingBalance={startingBalances[b.id] ?? b.balance}
+                      justUpdated={ui.justUpdatedId === b.id}
+                    />
+                  ))}
+                </div>
               </div>
             )}
             {ui.tab === "pending" && (

@@ -140,7 +140,32 @@ const { transactions, buckets, startingBalances, pending } = state;
   }
 }
 
-// 4. Identity. The transactions table is keyed on these ids with INSERT OR IGNORE, so a fixed
+// 4. The generic bucket stays empty.
+//
+//    "Everything Else" (b5) exists so an unclassifiable purchase has an obvious home, and it
+//    holds nothing so that choosing it still costs something: the picker shows `$0 → -$250`
+//    in red beside the other buckets' real balances, which is the whole argument made with
+//    no modal and no block. Funding it would turn it into a slush fund where every awkward
+//    purchase lands painlessly, and that single edit would pass every other suite here.
+{
+  const generic = buckets.find((b) => b.id === "b5");
+
+  check("generic: the bucket exists", generic !== undefined);
+  check("generic: it starts empty", generic?.balance === 0, `${generic?.balance}`);
+  check("generic: and started empty", startingBalances["b5"] === 0, `${startingBalances["b5"]}`);
+  check(
+    "generic: nothing is seeded into it",
+    !transactions.some((t) => t.bucketId === "b5"),
+    "a seeded purchase here would open the app already over",
+  );
+  check(
+    "generic: it is the only empty one, so the others still have something to lose",
+    buckets.filter((b) => b.balance === 0).length === 1,
+  );
+  check("generic: no covers on arrival", Array.isArray(state.covers) && state.covers.length === 0);
+}
+
+// 5. Identity. The transactions table is keyed on these ids with INSERT OR IGNORE, so a fixed
 //    id would mean only the first visitor's rows ever landed and every later one vanished.
 {
   const ids = transactions.map((t) => t.id);
@@ -157,7 +182,7 @@ const { transactions, buckets, startingBalances, pending } = state;
   );
 }
 
-// 5. The tray still has something in it, so the let-it-go moment stays one click away.
+// 6. The tray still has something in it, so the let-it-go moment stays one click away.
 {
   check("tray: a pending want is waiting", pending.length >= 1);
   check(
@@ -170,7 +195,7 @@ const { transactions, buckets, startingBalances, pending } = state;
   );
 }
 
-// 6. The guard itself.
+// 7. The guard itself.
 check("no network calls attempted", fetchAttempts === 0, `fetch=${fetchAttempts}`);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

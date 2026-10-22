@@ -19,6 +19,7 @@
     "check:exchanges": "node scripts/check-exchanges.mjs",
     "check:efficiency": "node scripts/check-efficiency.mjs",
     "check:pricing": "node scripts/check-pricing.mjs",
+    "check:cover": "node scripts/check-cover.mjs",
     "check:seed": "node scripts/check-seed.mjs",
     "probe:tavily": "node scripts/probe-tavily.mjs"
   },

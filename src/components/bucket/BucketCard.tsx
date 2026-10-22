@@ -19,7 +19,22 @@ export function BucketCard({
   justUpdated,
 }: Props) {
   const spent = Math.max(0, startingBalance - bucket.balance);
-  const pct = startingBalance > 0 ? Math.min(100, (spent / startingBalance) * 100) : 0;
+  /**
+   * How far past zero this bucket has gone. Spending past a balance is allowed, and
+   * "Everything Else" starts empty on purpose, so a deficit is an ordinary state here
+   * rather than an error to be hidden.
+   */
+  const over = bucket.balance < 0 ? -bucket.balance : 0;
+  const inDeficit = over > 0;
+  /**
+   * A bucket that started at zero has no proportion left to fill, so a deficit reads as a
+   * full bar instead of dividing by zero and rendering a `NaN%` width.
+   */
+  const pct = inDeficit
+    ? 100
+    : startingBalance > 0
+      ? Math.min(100, (spent / startingBalance) * 100)
+      : 0;
   const isChild = bucket.ownerType === "child";
   const overLimit = bucket.limit != null && spent > bucket.limit;
   const Icon = resolveBucketIcon(bucket.iconKey);
@@ -58,7 +73,12 @@ export function BucketCard({
               </span>
             )}
           </div>
-          <div className="mt-1.5 text-3xl font-semibold tabular-nums text-foreground">
+          <div
+            className={cn(
+              "mt-1.5 text-3xl font-semibold tabular-nums",
+              inDeficit ? "text-destructive" : "text-foreground",
+            )}
+          >
             {formatCurrency(bucket.balance)}
           </div>
         </div>
@@ -69,17 +89,26 @@ export function BucketCard({
           <div
             className={cn(
               "h-full rounded-full transition-all duration-700",
-              overLimit ? "bg-destructive" : "bg-primary/80",
+              overLimit || inDeficit ? "bg-destructive" : "bg-primary/80",
             )}
             style={{ width: `${pct}%` }}
           />
         </div>
-        <div className="mt-2 flex justify-between text-xs text-muted-foreground tabular-nums">
-          <span>{formatCurrency(spent)} spent</span>
-          {bucket.limit != null ? (
-            <span>Limit {formatCurrency(bucket.limit)}</span>
+        <div className="mt-2 flex justify-between text-xs tabular-nums">
+          {inDeficit ? (
+            <>
+              <span className="text-destructive">{formatCurrency(over)} over</span>
+              <span className="text-muted-foreground">Needs covering</span>
+            </>
           ) : (
-            <span>of {formatCurrency(startingBalance)}</span>
+            <>
+              <span className="text-muted-foreground">{formatCurrency(spent)} spent</span>
+              {bucket.limit != null ? (
+                <span className="text-muted-foreground">Limit {formatCurrency(bucket.limit)}</span>
+              ) : (
+                <span className="text-muted-foreground">of {formatCurrency(startingBalance)}</span>
+              )}
+            </>
           )}
         </div>
       </div>
