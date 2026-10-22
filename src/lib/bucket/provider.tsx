@@ -120,6 +120,13 @@ export type BucketActions = {
   /** A hold the clock released while the app was open. Counted once, no coin. */
   noteClockRelease: (hold: { id: string; amount: number; label: string }) => void;
   setReleaseTo: (to: ReleaseTo) => void;
+  /**
+   * Clear a bucket's deficit by moving money out of one that has it.
+   *
+   * Always the person's choice and never prompted by a model. Nothing calls this on their
+   * behalf, and leaving a bucket negative is a supported outcome.
+   */
+  coverBucket: (fromBucketId: string, toBucketId: string, amount: number) => void;
   setTab: (tab: Tab) => void;
   setPurchaseOpen: (open: boolean) => void;
   setNewBucketOpen: (open: boolean) => void;
@@ -559,6 +566,28 @@ export function BucketProvider({
 
   const dismissRetraction = useEvent(() => patchUi({ retractionFor: null }));
 
+  const coverBucket = useEvent((fromBucketId: string, toBucketId: string, amount: number) => {
+    const from = state.buckets.find((b) => b.id === fromBucketId);
+    const to = state.buckets.find((b) => b.id === toBucketId);
+    if (!from || !to) return;
+
+    dispatch({
+      type: "COVER_BUCKET",
+      cover: {
+        id: crypto.randomUUID(),
+        amount,
+        fromBucketId,
+        toBucketId,
+        timestamp: Date.now(),
+      },
+    });
+
+    toast("Covered", {
+      description: `${formatCurrency(amount)} moved from ${from.name} to ${to.name}.`,
+      duration: 5000,
+    });
+  });
+
   const resetAll = useEvent(() => {
     dispatch({ type: "RESET" });
     setUi((prev) => ({ ...INITIAL_UI, muted: prev.muted, parentMode: prev.parentMode }));
@@ -585,6 +614,7 @@ export function BucketProvider({
       celebrateLetGo,
       noteClockRelease,
       setReleaseTo,
+      coverBucket,
       setTab: (tab) => patchUi({ tab }),
       setPurchaseOpen: (purchaseOpen) => patchUi({ purchaseOpen }),
       setNewBucketOpen: (newBucketOpen) => patchUi({ newBucketOpen }),
@@ -616,6 +646,7 @@ export function BucketProvider({
       celebrateLetGo,
       noteClockRelease,
       setReleaseTo,
+      coverBucket,
       patchUi,
     ],
   );

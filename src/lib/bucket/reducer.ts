@@ -1,6 +1,7 @@
 import {
   Bucket,
   BucketTag,
+  Cover,
   ParentRequest,
   PendingWant,
   PurchaseVerdict,
@@ -23,6 +24,8 @@ export type BucketState = {
   buckets: Bucket[];
   startingBalances: Record<string, number>;
   transactions: Transaction[];
+  /** Money moved between buckets to clear a negative. Never read by the engine. */
+  covers: Cover[];
   pending: PendingWant[];
   parentRequests: ParentRequest[];
   savedByPause: number;
@@ -46,6 +49,7 @@ export const createInitialState = (): BucketState => ({
   buckets: initialBuckets,
   startingBalances: Object.fromEntries(initialBuckets.map((b) => [b.id, b.balance])),
   transactions: [],
+  covers: [],
   pending: [],
   parentRequests: [],
   savedByPause: 0,
@@ -76,7 +80,8 @@ export type BucketAction =
   | { type: "SET_TRIP"; trip: Trip | null }
   | { type: "ATTACH_VERDICT"; subjectId: string; verdict: PurchaseVerdict }
   | { type: "RETRACT_TO_TRAY"; transactionId: string; pendingId: string; createdAt: number }
-  | { type: "OVERRIDE_VERDICT"; transactionId: string };
+  | { type: "OVERRIDE_VERDICT"; transactionId: string }
+  | { type: "COVER_BUCKET"; cover: Cover };
 
 export function bucketReducer(state: BucketState, action: BucketAction): BucketState {
   switch (action.type) {
@@ -160,6 +165,41 @@ export function bucketReducer(state: BucketState, action: BucketAction): BucketS
         },
         savedByPause: Math.max(0, state.savedByPause - action.amount),
       };
+
+    /**
+     * Clearing a negative by moving money out of a bucket that has it.
+     *
+     * `startingBalances` is deliberately left alone, which is what makes both cards read
+     * honestly afterwards. The funding bucket's spend grows, because the money really did
+     * leave it. The covered bucket returns to the zero it started at, so it reads $0 with
+     * nothing spent rather than carrying a phantom credit.
+     *
+     * Rejected rather than clamped when the numbers do not work: a clamp would record a
+     * {@link Cover} row stating an amount that differs from what actually moved, and that
+     * row is the only audit trail reconciling a funding bucket's card against its ledger.
+     * Covering more than the deficit is refused too, since overshooting re-creates the
+     * slush fund the empty bucket exists to prevent.
+     */
+    case "COVER_BUCKET": {
+      const { cover } = action;
+      const from = state.buckets.find((b) => b.id === cover.fromBucketId);
+      const to = state.buckets.find((b) => b.id === cover.toBucketId);
+
+      if (!from || !to || from.id === to.id) return state;
+      if (!(cover.amount > 0)) return state;
+      if (cover.amount > from.balance) return state;
+      if (cover.amount > -to.balance) return state;
+
+      return {
+        ...state,
+        buckets: state.buckets.map((b) => {
+          if (b.id === from.id) return { ...b, balance: b.balance - cover.amount };
+          if (b.id === to.id) return { ...b, balance: b.balance + cover.amount };
+          return b;
+        }),
+        covers: [cover, ...state.covers],
+      };
+    }
 
     case "CREATE_BUCKET":
       return {

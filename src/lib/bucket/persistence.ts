@@ -2,6 +2,7 @@ import {
   Bucket,
   SAVINGS_BUCKET_ID,
   initialBuckets,
+  type Cover,
   type ParentRequest,
   type PendingWant,
   type Transaction,
@@ -14,7 +15,7 @@ import { createInitialState, type BucketState } from "./reducer";
  * different version is discarded rather than migrated — this is throwaway demo state, and
  * a wrong migration is worse than a fresh seed.
  */
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 export type PersistedState = {
   version: number;
@@ -59,6 +60,14 @@ const isPending = (v: unknown): v is PendingWant =>
   typeof v.bucketId === "string" &&
   (v.intent === "want" || v.intent === "need");
 
+const isCover = (v: unknown): v is Cover =>
+  isObject(v) &&
+  typeof v.id === "string" &&
+  typeof v.amount === "number" &&
+  typeof v.fromBucketId === "string" &&
+  typeof v.toBucketId === "string" &&
+  typeof v.timestamp === "number";
+
 const isParentRequest = (v: unknown): v is ParentRequest =>
   isObject(v) &&
   typeof v.id === "string" &&
@@ -79,6 +88,7 @@ export function validateBucketState(state: unknown): BucketState | null {
     buckets,
     startingBalances,
     transactions,
+    covers,
     pending,
     parentRequests,
     savedByPause,
@@ -90,6 +100,7 @@ export function validateBucketState(state: unknown): BucketState | null {
   if (!Array.isArray(buckets) || !buckets.every(isBucket) || buckets.length === 0) return null;
   if (!isObject(startingBalances)) return null;
   if (!Array.isArray(transactions) || !transactions.every(isTransaction)) return null;
+  if (!Array.isArray(covers) || !covers.every(isCover)) return null;
   if (!Array.isArray(pending) || !pending.every(isPending)) return null;
   if (!Array.isArray(parentRequests) || !parentRequests.every(isParentRequest)) return null;
   if (typeof savedByPause !== "number" || !Number.isFinite(savedByPause)) return null;
@@ -111,6 +122,7 @@ export function validateBucketState(state: unknown): BucketState | null {
     buckets,
     startingBalances: startingBalances as Record<string, number>,
     transactions,
+    covers,
     pending,
     parentRequests,
     savedByPause,
