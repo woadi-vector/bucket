@@ -1,6 +1,7 @@
 import {
   Bucket,
   SAVINGS_BUCKET_ID,
+  DEFAULT_SLEEP_THRESHOLD,
   initialBuckets,
   type Cover,
   type ParentRequest,
@@ -92,6 +93,7 @@ export function validateBucketState(state: unknown): BucketState | null {
     pending,
     parentRequests,
     savedByPause,
+    sleepThreshold,
     trip,
     releaseTo,
     releasedHoldIds,
@@ -126,6 +128,13 @@ export function validateBucketState(state: unknown): BucketState | null {
     pending,
     parentRequests,
     savedByPause,
+    // Absent on rows written before this was adjustable. Defaulted rather than rejected: a
+    // missing preference is not a corrupt row, and discarding someone's whole ledger over a
+    // field they never had the chance to set would be the wrong trade.
+    sleepThreshold:
+      typeof sleepThreshold === "number" && Number.isFinite(sleepThreshold) && sleepThreshold >= 0
+        ? sleepThreshold
+        : DEFAULT_SLEEP_THRESHOLD,
     trip: (trip ?? null) as Trip | null,
     ...(releaseTo !== undefined ? { releaseTo: releaseTo as "bucket" | "savings" } : {}),
     ...(releasedHoldIds !== undefined ? { releasedHoldIds: releasedHoldIds as string[] } : {}),

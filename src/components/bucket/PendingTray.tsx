@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Bucket, PendingWant, SLEEP_THRESHOLD, formatCurrency } from "@/lib/bucket-store";
+import { Bucket, PendingWant, formatCurrency } from "@/lib/bucket-store";
+import { useBucketState } from "@/lib/bucket/provider";
 import { Button } from "@/components/ui/button";
 import { Clock, Sparkles, Scale } from "lucide-react";
 
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function PendingTray({ items, buckets, onConfirm, onLetGo }: Props) {
+  const { sleepThreshold } = useBucketState();
   const handleLetGo = (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
     const li = e.currentTarget.closest("li[data-pending-id]") as HTMLElement | null;
     const rect = (li ?? e.currentTarget).getBoundingClientRect();
@@ -21,7 +23,7 @@ export function PendingTray({ items, buckets, onConfirm, onLetGo }: Props) {
       <div className="rounded-2xl border border-dashed border-border bg-card/40 p-8 text-center">
         <Clock className="mx-auto h-5 w-5 text-muted-foreground" />
         <p className="mt-2 text-sm text-muted-foreground">
-          Nothing pending. Wants over {formatCurrency(SLEEP_THRESHOLD)} will land here for a 24h
+          Nothing pending. Wants over {formatCurrency(sleepThreshold)} will land here for a 24h
           pause.
         </p>
       </div>

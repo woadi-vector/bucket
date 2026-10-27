@@ -10,8 +10,19 @@ export const READINESS_OPTIONS: { id: ReadinessTag; label: string }[] = [
   { id: "replacing", label: "Replacing" },
 ];
 
-/** Wants above this land in the Sleep On It tray instead of committing immediately. */
-export const SLEEP_THRESHOLD = 40;
+/**
+ * What a want has to exceed before it lands in the Sleep On It tray.
+ *
+ * The starting value, not the rule. People's sense of what counts as a purchase worth
+ * sleeping on differs by more than a little: the same $40 that is nothing to one person is
+ * a week of lunches to another, and a threshold that does not match the person's own sense
+ * of a big purchase either nags them constantly or never fires at all. Both failures end
+ * with the tray being ignored.
+ *
+ * Kept as the default because an opinionated starting number is worth more than an empty
+ * field, and most people will never change it.
+ */
+export const DEFAULT_SLEEP_THRESHOLD = 40;
 
 /**
  * Buckets get persisted (Phase 2), so a Bucket stores an icon *key*, not the icon

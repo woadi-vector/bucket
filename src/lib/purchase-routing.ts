@@ -1,4 +1,4 @@
-import { SLEEP_THRESHOLD, type Bucket, type PurchaseVerdict } from "@/lib/bucket-store";
+import type { Bucket, PurchaseVerdict } from "@/lib/bucket-store";
 import { isLiveContest } from "@/lib/reconsideration";
 
 /**
@@ -21,6 +21,12 @@ export type RoutingInput = {
   spent: number;
   /** The engine's answer, when it arrived before the bucket was chosen. */
   preview?: PurchaseVerdict | null;
+  /**
+   * What a want has to exceed to be held for a day. The person's own setting, passed in
+   * rather than read from a constant, so this function cannot disagree with what the rest of
+   * the app is telling them the number is.
+   */
+  sleepThreshold: number;
 };
 
 /**
@@ -48,7 +54,7 @@ export function nextStepAfterBucket(input: RoutingInput): NextStep {
     return "askParent";
   }
 
-  if (intent === "want" && amount > SLEEP_THRESHOLD) {
+  if (intent === "want" && amount > input.sleepThreshold) {
     return "intercept";
   }
 

@@ -8,6 +8,7 @@ import {
   Transaction,
   Trip,
   SAVINGS_BUCKET_ID,
+  DEFAULT_SLEEP_THRESHOLD,
   initialBuckets,
 } from "@/lib/bucket-store";
 
@@ -29,6 +30,8 @@ export type BucketState = {
   pending: PendingWant[];
   parentRequests: ParentRequest[];
   savedByPause: number;
+  /** What a want has to exceed to be held for a day. The person's own number. */
+  sleepThreshold: number;
   trip: Trip | null;
   /**
    * Where money from a released PayPal hold goes in the app. PayPal releases the hold either
@@ -53,6 +56,7 @@ export const createInitialState = (): BucketState => ({
   pending: [],
   parentRequests: [],
   savedByPause: 0,
+  sleepThreshold: DEFAULT_SLEEP_THRESHOLD,
   trip: null,
 });
 
@@ -75,6 +79,7 @@ export type BucketAction =
   | { type: "CREATE_BUCKET"; bucket: Bucket }
   | { type: "SET_BUCKET_TAG"; bucketId: string; tag: BucketTag; holdThreshold?: number | null }
   | { type: "SET_CHILD_LIMIT"; limit: number | null }
+  | { type: "SET_SLEEP_THRESHOLD"; value: number }
   | { type: "PARENT_REQUEST_CREATE"; request: ParentRequest }
   | { type: "PARENT_REQUEST_RESOLVE"; id: string; status: "approved" | "denied" }
   | { type: "SET_TRIP"; trip: Trip | null }
@@ -201,6 +206,20 @@ export function bucketReducer(state: BucketState, action: BucketAction): BucketS
         covers: [cover, ...state.covers],
       };
     }
+
+    /**
+     * The person's own sense of what counts as a purchase worth sleeping on.
+     *
+     * Clamped rather than validated away. Zero is a real choice and means every want waits a
+     * day, which is the most this app will ever do on its own; a negative number is not a
+     * choice, it is a typo, and the ceiling only exists so a slipped keypress cannot quietly
+     * disable the tray forever.
+     */
+    case "SET_SLEEP_THRESHOLD":
+      return {
+        ...state,
+        sleepThreshold: Math.min(1_000_000, Math.max(0, Math.round(action.value))),
+      };
 
     case "CREATE_BUCKET":
       return {
