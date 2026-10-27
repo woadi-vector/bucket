@@ -66,6 +66,7 @@ function Index() {
     pending,
     parentRequests,
     savedByPause,
+    sleepThreshold,
     trip,
     ui,
   } = useBucketState();
@@ -316,6 +317,33 @@ function Index() {
                     mode would be gated behind a PIN or an authenticated parent account with
                     server-enforced roles.
                   </p>
+                  {/*
+                    Not behind parent mode. The child limit above is a rule one person sets
+                    for another, but this is the person's own sense of what counts as a
+                    purchase worth sleeping on, and $40 is a guess about them rather than a
+                    fact. Left wrong it either nags constantly or never fires, and both end
+                    with the tray being ignored.
+                  */}
+                  <div className="mt-4 flex items-center justify-between gap-3 pt-4 border-t border-border">
+                    <div>
+                      <p className="text-sm font-medium">Sleep on it above</p>
+                      <p className="text-xs text-muted-foreground">
+                        Wants over this wait a day. Set it to 0 and every want waits.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">$</span>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        className="h-10 w-28 rounded-lg"
+                        value={sleepThreshold}
+                        onChange={(e) => actions.setSleepThreshold(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
                   {ui.parentMode && kidsBucket && (
                     <div className="mt-4 flex items-center justify-between gap-3 pt-4 border-t border-border">
                       <div>

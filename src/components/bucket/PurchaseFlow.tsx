@@ -10,11 +10,11 @@ import {
   shortModelName,
   ReadinessTag,
   READINESS_OPTIONS,
-  SLEEP_THRESHOLD,
   resolveBucketIcon,
 } from "@/lib/bucket-store";
 import { orderForPlacement } from "@/lib/placement";
 import { nextStepAfterBucket } from "@/lib/purchase-routing";
+import { useBucketState } from "@/lib/bucket/provider";
 import { cn } from "@/lib/utils";
 import { Check, Moon, Zap, Send, Scale } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -146,6 +146,7 @@ export function PurchaseFlow({
   onParentRequest,
   prefill,
 }: Props) {
+  const { sleepThreshold } = useBucketState();
   const [step, setStep] = useState<Step>("amount");
   /** The engine's answer, when it arrived before a bucket was chosen. */
   const [preview, setPreview] = useState<PurchaseVerdict | null>(null);
@@ -229,6 +230,7 @@ export function PurchaseFlow({
       intent: intent!,
       spent: Math.max(0, startingBalances[b.id] - b.balance),
       preview,
+      sleepThreshold,
     });
 
     if (next === "commit") finalize(b.id);

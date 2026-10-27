@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import {
   DEFAULT_BUCKET_ACCENT,
   DEFAULT_BUCKET_ICON_KEY,
+  DEFAULT_SLEEP_THRESHOLD,
   PurchaseVerdict,
   ReadinessTag,
   SAVINGS_BUCKET_ID,
@@ -119,6 +120,13 @@ export type BucketActions = {
   denyRequest: (id: string) => void;
   createBucket: (name: string, amount: number) => void;
   setChildLimit: (value: string) => void;
+  /**
+   * Change what a want has to exceed before it waits a day.
+   *
+   * Takes the raw field text. An empty or unreadable box restores the default rather than
+   * setting zero: someone clearing a field is not asking for every want to be held.
+   */
+  setSleepThreshold: (value: string) => void;
   setTrip: (trip: Trip | null) => void;
   completeTrip: (checkedTotal: number) => void;
   resetAll: () => void;
@@ -535,6 +543,14 @@ export function BucketProvider({
     });
   });
 
+  const setSleepThreshold = useEvent((value: string) => {
+    const n = parseFloat(value);
+    dispatch({
+      type: "SET_SLEEP_THRESHOLD",
+      value: isNaN(n) ? DEFAULT_SLEEP_THRESHOLD : n,
+    });
+  });
+
   const setChildLimit = useEvent((value: string) => {
     const n = parseFloat(value);
     dispatch({ type: "SET_CHILD_LIMIT", limit: isNaN(n) || n <= 0 ? null : n });
@@ -710,6 +726,7 @@ export function BucketProvider({
       denyRequest,
       createBucket,
       setChildLimit,
+      setSleepThreshold,
       setTrip,
       completeTrip,
       resetAll,
@@ -740,6 +757,7 @@ export function BucketProvider({
       denyRequest,
       createBucket,
       setChildLimit,
+      setSleepThreshold,
       setTrip,
       completeTrip,
       resetAll,

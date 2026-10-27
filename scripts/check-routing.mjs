@@ -33,7 +33,7 @@ const entry = join(dir, "entry.ts");
 writeFileSync(
   entry,
   `export { nextStepAfterBucket } from "@/lib/purchase-routing";
-export { SLEEP_THRESHOLD } from "@/lib/bucket-store";`,
+export { DEFAULT_SLEEP_THRESHOLD } from "@/lib/bucket-store";`,
 );
 
 const bundled = await build({
@@ -48,7 +48,9 @@ const bundled = await build({
 });
 const file = join(dir, "routing.mjs");
 writeFileSync(file, bundled.outputFiles[0].contents);
-const { nextStepAfterBucket, SLEEP_THRESHOLD } = await import(pathToFileURL(file).href);
+const { nextStepAfterBucket, DEFAULT_SLEEP_THRESHOLD: SLEEP_THRESHOLD } = await import(
+  pathToFileURL(file).href
+);
 rmSync(dir, { recursive: true, force: true });
 
 let failures = 0;
@@ -70,7 +72,14 @@ const contest = {
 };
 
 const route = (over) =>
-  nextStepAfterBucket({ bucket: self, amount: 20, intent: "need", spent: 0, ...over });
+  nextStepAfterBucket({
+    bucket: self,
+    amount: 20,
+    intent: "need",
+    spent: 0,
+    sleepThreshold: SLEEP_THRESHOLD,
+    ...over,
+  });
 
 // 1. Nothing to say: the purchase just happens.
 {
@@ -102,6 +111,7 @@ const route = (over) =>
       amount: SLEEP_THRESHOLD - 1,
       intent: "want",
       spent: 0,
+      sleepThreshold: SLEEP_THRESHOLD,
       preview: contest,
     }) === "secondThought",
   );
@@ -117,6 +127,7 @@ const route = (over) =>
       amount: SLEEP_THRESHOLD + 1,
       intent: "want",
       spent: 0,
+      sleepThreshold: SLEEP_THRESHOLD,
       preview: contest,
     }) === "intercept",
     "the tray is where the objection waits anyway",
@@ -128,6 +139,7 @@ const route = (over) =>
       amount: SLEEP_THRESHOLD,
       intent: "want",
       spent: 0,
+      sleepThreshold: SLEEP_THRESHOLD,
       preview: contest,
     }) === "secondThought",
   );
@@ -138,6 +150,7 @@ const route = (over) =>
       amount: SLEEP_THRESHOLD + 500,
       intent: "need",
       spent: 0,
+      sleepThreshold: SLEEP_THRESHOLD,
       preview: contest,
     }) === "secondThought",
   );
@@ -153,6 +166,7 @@ const route = (over) =>
       amount: 20,
       intent: "need",
       spent: 30,
+      sleepThreshold: SLEEP_THRESHOLD,
       preview: contest,
     }) === "askParent",
   );
@@ -163,12 +177,19 @@ const route = (over) =>
       amount: SLEEP_THRESHOLD + 1,
       intent: "want",
       spent: 30,
+      sleepThreshold: SLEEP_THRESHOLD,
       preview: contest,
     }) === "askParent",
   );
   check(
     "limit: under it, the purchase proceeds normally",
-    nextStepAfterBucket({ bucket: kid, amount: 5, intent: "need", spent: 30 }) === "commit",
+    nextStepAfterBucket({
+      bucket: kid,
+      amount: 5,
+      intent: "need",
+      spent: 30,
+      sleepThreshold: SLEEP_THRESHOLD,
+    }) === "commit",
   );
   check(
     "limit: a child bucket with no limit set is not gated",
@@ -177,15 +198,57 @@ const route = (over) =>
       amount: 500,
       intent: "need",
       spent: 30,
+      sleepThreshold: SLEEP_THRESHOLD,
     }) === "commit",
   );
   check(
     "limit: exactly at the limit is not over it",
-    nextStepAfterBucket({ bucket: kid, amount: 10, intent: "need", spent: 30 }) === "commit",
+    nextStepAfterBucket({
+      bucket: kid,
+      amount: 10,
+      intent: "need",
+      spent: 30,
+      sleepThreshold: SLEEP_THRESHOLD,
+    }) === "commit",
   );
 }
 
-// 5. The guard itself.
+// 5. The threshold is the person's number, not a constant. Someone who set it to $10 has
+//    said that $15 is a purchase worth sleeping on, and the routing has to agree with the
+//    figure the rest of the app is showing them.
+{
+  const want = (amount, sleepThreshold) =>
+    nextStepAfterBucket({ bucket: self, amount, intent: "want", spent: 0, sleepThreshold });
+
+  check("setting: a $15 want sleeps at a $10 threshold", want(15, 10) === "intercept");
+  check("setting: the same want commits at the default", want(15, 40) === "commit");
+  check("setting: zero holds every want", want(1, 0) === "intercept");
+  check(
+    "setting: zero still does not hold a need",
+    nextStepAfterBucket({
+      bucket: self,
+      amount: 5000,
+      intent: "need",
+      spent: 0,
+      sleepThreshold: 0,
+    }) === "commit",
+    "the tray is for wants; a need is the person's to make",
+  );
+  check(
+    "setting: a high threshold leaves the argument reachable",
+    nextStepAfterBucket({
+      bucket: self,
+      amount: 900,
+      intent: "want",
+      spent: 0,
+      sleepThreshold: 100000,
+      preview: contest,
+    }) === "secondThought",
+    "turning the tray off must not also silence the engine",
+  );
+}
+
+// 6. The guard itself.
 check("no network calls attempted", fetchAttempts === 0, `fetch=${fetchAttempts}`);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
