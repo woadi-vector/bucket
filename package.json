@@ -22,6 +22,7 @@
     "check:cover": "node scripts/check-cover.mjs",
     "check:placement": "node scripts/check-placement.mjs",
     "check:attribution": "node scripts/check-attribution.mjs",
+    "check:reconsideration": "node scripts/check-reconsideration.mjs",
     "check:seed": "node scripts/check-seed.mjs",
     "probe:tavily": "node scripts/probe-tavily.mjs"
   },

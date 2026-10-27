@@ -64,7 +64,8 @@ export type BucketAction =
   | { type: "ATTACH_VERDICT"; subjectId: string; verdict: PurchaseVerdict }
   | { type: "RETRACT_TO_TRAY"; transactionId: string; pendingId: string; createdAt: number }
   | { type: "OVERRIDE_VERDICT"; transactionId: string }
-  | { type: "COVER_BUCKET"; cover: Cover };
+  | { type: "COVER_BUCKET"; cover: Cover }
+  | { type: "ATTACH_RECONSIDERATION"; transactionId: string; verdict: PurchaseVerdict };
 
 export function bucketReducer(state: BucketState, action: BucketAction): BucketState {
   switch (action.type) {
@@ -208,6 +209,27 @@ export function bucketReducer(state: BucketState, action: BucketAction): BucketS
         ...state,
         transactions: state.transactions.map((t) => (t.id === subjectId ? { ...t, verdict } : t)),
         pending: state.pending.map((p) => (p.id === subjectId ? { ...p, verdict } : p)),
+      };
+    }
+
+    /**
+     * Bucket's answer to an explanation, kept beside the verdict it answers.
+     *
+     * Deliberately not an overwrite. The card shows the original argument and what became of
+     * it, so replacing the verdict would leave a person reading a conclusion with no record
+     * of what it concluded about, and would erase the disagreement from the stored history
+     * whenever the person talked Bucket out of it. Those are exactly the cases worth keeping.
+     *
+     * Only logged purchases are reconsidered. A tray item is already paused, so there is
+     * nothing to argue about yet.
+     */
+    case "ATTACH_RECONSIDERATION": {
+      const { transactionId, verdict } = action;
+      return {
+        ...state,
+        transactions: state.transactions.map((t) =>
+          t.id === transactionId ? { ...t, reconsideration: verdict } : t,
+        ),
       };
     }
 

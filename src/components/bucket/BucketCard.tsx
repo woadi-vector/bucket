@@ -100,6 +100,10 @@ export function BucketCard({
               <span className="text-destructive">{formatCurrency(over)} over</span>
               <span className="text-muted-foreground">Needs covering</span>
             </>
+          ) : startingBalance <= 0 ? (
+            // A bucket that started with nothing and still has nothing. "$0 spent of $0" is
+            // arithmetic nobody asked for; the useful fact is that there is nothing in it.
+            <span className="text-muted-foreground">Empty</span>
           ) : (
             <>
               <span className="text-muted-foreground">{formatCurrency(spent)} spent</span>

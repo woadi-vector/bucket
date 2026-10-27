@@ -21,7 +21,7 @@ import { useBucketSounds } from "@/lib/use-bucket-sounds";
 import { useEvent } from "@/lib/use-event";
 import { bucketReducer, createInitialState, type BucketState } from "./reducer";
 import { saveBucketState } from "./server-fns";
-import { requestVerdict } from "./verdict-fns";
+import { requestReconsideration, requestVerdict } from "./verdict-fns";
 
 /** How long to wait after the last change before persisting. */
 const SAVE_DEBOUNCE_MS = 800;
@@ -109,6 +109,14 @@ export type BucketActions = {
    * behalf, and leaving a bucket negative is a supported outcome.
    */
   coverBucket: (fromBucketId: string, toBucketId: string, amount: number) => void;
+  /**
+   * Answer Bucket's question and let the expensive tier decide whether it holds.
+   *
+   * Resolves when the answer has been attached, so the card can show that it is waiting.
+   * Always optional: ignoring the question and overriding the verdict outright are both
+   * supported outcomes and neither is treated as worse than answering.
+   */
+  explainVerdict: (transactionId: string, explanation: string) => Promise<void>;
   setTab: (tab: Tab) => void;
   setPurchaseOpen: (open: boolean) => void;
   setNewBucketOpen: (open: boolean) => void;
@@ -212,6 +220,12 @@ export function BucketProvider({
           dispatch({
             type: "ATTACH_VERDICT",
             subjectId,
+            // Everything the browser is allowed to see, rather than a subset of it. An
+            // earlier version of this listed four fields by hand, which silently dropped the
+            // question Bucket wanted to ask, the id that lets an answer be attached to the
+            // right exchange, and the model attribution. All three were produced, sent, and
+            // thrown away here, so the features that depended on them could not work and
+            // nothing anywhere reported a fault.
             verdict: {
               agrees: verdict.agrees,
               verdict: verdict.verdict,
@@ -219,6 +233,9 @@ export function BucketProvider({
               reasoning: verdict.reasoning,
               ...(verdict.cached ? { cached: true } : {}),
               ...(verdict.withheld ? { withheld: true } : {}),
+              ...(verdict.question ? { question: verdict.question } : {}),
+              ...(verdict.exchangeId ? { exchangeId: verdict.exchangeId } : {}),
+              ...(verdict.attribution ? { attribution: verdict.attribution } : {}),
             },
           });
 
@@ -478,6 +495,84 @@ export function BucketProvider({
 
   const dismissRetraction = useEvent(() => patchUi({ retractionFor: null }));
 
+  /**
+   * The person answered Bucket's question.
+   *
+   * Awaited by its caller, unlike the first verdict. The difference is that someone is
+   * sitting in front of this one having just typed something: a result that landed silently
+   * whenever it felt like it would read as the app ignoring them. The card shows a waiting
+   * state and this resolves it.
+   *
+   * A failure accepts the explanation rather than leaving the argument standing. Holding a
+   * verdict because a network call fell over would mean Bucket wins by default, and nothing
+   * about a dropped request is evidence that the person was wrong.
+   */
+  const explainVerdict = useEvent(async (transactionId: string, explanation: string) => {
+    const tx = state.transactions.find((t) => t.id === transactionId);
+    if (!tx?.verdict) return;
+
+    const bucketName = (id: string) => state.buckets.find((b) => b.id === id)?.name;
+    const history = state.transactions
+      .filter((t) => t.id !== transactionId)
+      .slice(0, 20)
+      .map((t) => ({
+        amount: t.amount,
+        label: t.label,
+        intent: t.intent,
+        readinessTag: t.readinessTag,
+        timestamp: t.timestamp,
+        bucketName: bucketName(t.bucketId),
+      }));
+
+    try {
+      const settled = await requestReconsideration({
+        data: {
+          purchase: {
+            amount: tx.amount,
+            label: tx.label,
+            intent: tx.intent,
+            readinessTag: tx.readinessTag,
+            bucketName: bucketName(tx.bucketId),
+          },
+          history,
+          question: tx.verdict.question ?? "",
+          explanation,
+          priorVerdict: tx.verdict.verdict,
+          ...(tx.verdict.exchangeId ? { exchangeId: tx.verdict.exchangeId } : {}),
+        },
+      });
+
+      dispatch({
+        type: "ATTACH_RECONSIDERATION",
+        transactionId,
+        verdict: {
+          agrees: settled.agrees,
+          verdict: settled.verdict,
+          confidence: settled.confidence,
+          reasoning: settled.reasoning,
+          // The whole point of the second pass. Derived server-side from the new verdict,
+          // never taken from the model, because it decides which of two opposite things the
+          // person is told.
+          explanationAccepted: settled.explanationAccepted ?? false,
+          ...(settled.attribution ? { attribution: settled.attribution } : {}),
+        },
+      });
+    } catch (error) {
+      console.error("[bucket] reconsideration failed", error);
+      dispatch({
+        type: "ATTACH_RECONSIDERATION",
+        transactionId,
+        verdict: {
+          agrees: true,
+          verdict: tx.intent,
+          confidence: 0,
+          reasoning: "",
+          explanationAccepted: true,
+        },
+      });
+    }
+  });
+
   const coverBucket = useEvent((fromBucketId: string, toBucketId: string, amount: number) => {
     const from = state.buckets.find((b) => b.id === fromBucketId);
     const to = state.buckets.find((b) => b.id === toBucketId);
@@ -523,6 +618,7 @@ export function BucketProvider({
       overrideVerdict,
       dismissRetraction,
       coverBucket,
+      explainVerdict,
       setTab: (tab) => patchUi({ tab }),
       setPurchaseOpen: (purchaseOpen) => patchUi({ purchaseOpen }),
       setNewBucketOpen: (newBucketOpen) => patchUi({ newBucketOpen }),
@@ -551,6 +647,7 @@ export function BucketProvider({
       overrideVerdict,
       dismissRetraction,
       coverBucket,
+      explainVerdict,
       patchUi,
     ],
   );
