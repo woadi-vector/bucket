@@ -415,6 +415,7 @@ function Index() {
         buckets={buckets}
         startingBalances={startingBalances}
         onConfirm={actions.confirmPurchase}
+        onPreviewVerdict={actions.previewVerdict}
         onSleepOnIt={actions.sleepOnIt}
         onParentRequest={actions.createParentRequest}
         prefill={ui.prefill}

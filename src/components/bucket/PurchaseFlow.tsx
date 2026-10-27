@@ -6,17 +6,28 @@ import { Button } from "@/components/ui/button";
 import {
   Bucket,
   formatCurrency,
+  PurchaseVerdict,
+  shortModelName,
   ReadinessTag,
   READINESS_OPTIONS,
   SLEEP_THRESHOLD,
   resolveBucketIcon,
 } from "@/lib/bucket-store";
 import { orderForPlacement } from "@/lib/placement";
+import { nextStepAfterBucket } from "@/lib/purchase-routing";
 import { cn } from "@/lib/utils";
-import { Check, Moon, Zap, Send } from "lucide-react";
+import { Check, Moon, Zap, Send, Scale } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-type Step = "amount" | "intent" | "readiness" | "bucket" | "intercept" | "askParent" | "confirm";
+type Step =
+  | "amount"
+  | "intent"
+  | "readiness"
+  | "bucket"
+  | "secondThought"
+  | "intercept"
+  | "askParent"
+  | "confirm";
 
 /**
  * One selectable bucket in the picker, showing what it would be left with.
@@ -89,13 +100,29 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   buckets: Bucket[];
   startingBalances: Record<string, number>;
-  onConfirm: (data: {
+  onConfirm: (
+    data: {
+      amount: number;
+      label: string;
+      bucketId: string;
+      intent: "want" | "need";
+      readinessTag: ReadinessTag | null;
+    },
+    settled?: { verdict: PurchaseVerdict; openArgument?: boolean },
+  ) => void;
+  /**
+   * Asks the engine about this purchase before it is made.
+   *
+   * Started when the bucket list opens so the call runs while the person is reading it.
+   * Resolves to null when nothing usable came back in time, in which case the flow behaves
+   * exactly as it always has and the argument arrives after the purchase instead.
+   */
+  onPreviewVerdict: (subject: {
     amount: number;
     label: string;
-    bucketId: string;
     intent: "want" | "need";
     readinessTag: ReadinessTag | null;
-  }) => void;
+  }) => Promise<PurchaseVerdict | null>;
   onSleepOnIt: (data: {
     amount: number;
     label: string;
@@ -110,6 +137,7 @@ type Props = {
 
 export function PurchaseFlow({
   open,
+  onPreviewVerdict,
   onOpenChange,
   buckets,
   startingBalances,
@@ -119,6 +147,9 @@ export function PurchaseFlow({
   prefill,
 }: Props) {
   const [step, setStep] = useState<Step>("amount");
+  /** The engine's answer, when it arrived before a bucket was chosen. */
+  const [preview, setPreview] = useState<PurchaseVerdict | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const [amount, setAmount] = useState("");
   const [label, setLabel] = useState("");
   const [intent, setIntent] = useState<"want" | "need" | null>(null);
@@ -141,8 +172,46 @@ export function PurchaseFlow({
         setBucketId(null);
         setReadiness(null);
       }
+      setPreview(null);
+      setPreviewing(false);
     }
   }, [open, prefill]);
+
+  /**
+   * Starts the screening call when the bucket list opens.
+   *
+   * The whole point of putting it here. Everything the engine needs is already known by this
+   * step, so the call runs during the seconds the person spends reading five buckets and
+   * their projected balances, instead of after the money has moved. On a tap that lands
+   * after it returns, the disagreement can be raised before the purchase rather than as an
+   * offer to undo one.
+   *
+   * It is never waited on. If the answer has not arrived by the time a bucket is chosen, the
+   * purchase proceeds and the argument arrives afterwards exactly as it used to.
+   */
+  useEffect(() => {
+    if (step !== "bucket" || !amtValid || !intent || preview || previewing) return;
+
+    let live = true;
+    setPreviewing(true);
+    void onPreviewVerdict({
+      amount: amt,
+      label: label.trim(),
+      intent,
+      readinessTag: readiness,
+    })
+      .then((verdict) => {
+        if (live) setPreview(verdict);
+      })
+      .finally(() => {
+        if (live) setPreviewing(false);
+      });
+
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   const amt = parseFloat(amount);
   const amtValid = !isNaN(amt) && amt > 0 && label.trim().length > 0;
@@ -154,32 +223,42 @@ export function PurchaseFlow({
 
   const pickBucket = (b: Bucket) => {
     setBucketId(b.id);
-    const spent = Math.max(0, startingBalances[b.id] - b.balance);
-    // Child bucket over limit -> ask a parent (soft)
-    if (b.ownerType === "child" && b.limit != null && spent + amt > b.limit) {
-      setStep("askParent");
-      return;
-    }
-    // Want over threshold -> sleep on it interception
-    if (intent === "want" && amt > SLEEP_THRESHOLD) {
-      setStep("intercept");
-      return;
-    }
-    finalize(b.id);
+    const next = nextStepAfterBucket({
+      bucket: b,
+      amount: amt,
+      intent: intent!,
+      spent: Math.max(0, startingBalances[b.id] - b.balance),
+      preview,
+    });
+
+    if (next === "commit") finalize(b.id);
+    else setStep(next);
   };
 
-  const finalize = (bId: string) => {
+  const finalize = (
+    bId: string,
+    settled?: { verdict: PurchaseVerdict; openArgument?: boolean },
+  ) => {
     setStep("confirm");
     setTimeout(() => {
-      onConfirm({
-        amount: amt,
-        label: label.trim(),
-        bucketId: bId,
-        intent: intent!,
-        readinessTag: readiness,
-      });
+      onConfirm(
+        {
+          amount: amt,
+          label: label.trim(),
+          bucketId: bId,
+          intent: intent!,
+          readinessTag: readiness,
+        },
+        settled,
+      );
     }, 1000);
     setTimeout(() => onOpenChange(false), 1350);
+  };
+
+  /** Carries the argument already shown, so the purchase does not ask a second time. */
+  const commitWithPreview = (openArgument: boolean) => {
+    if (!bucketId || !preview) return;
+    finalize(bucketId, { verdict: preview, openArgument });
   };
 
   const sleepOnIt = () => {
@@ -417,6 +496,116 @@ export function PurchaseFlow({
                     </div>
                   )}
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/*
+            The disagreement, raised before the money moves.
+
+            This is the same argument the contested card makes, shown a beat earlier because
+            the engine answered while the bucket list was open. The difference is what it can
+            offer: nothing has been charged, so "keep going" is a decision rather than an
+            undo, and the money is still where it was.
+
+            It is not a gate. Keeping the purchase is the first button, takes one tap, and
+            costs nothing. Bucket advises; the person decides, and the only thing that has
+            changed is that they get to decide knowing.
+          */}
+          {step === "secondThought" && preview && (
+            <motion.div
+              key="secondThought"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="p-7">
+                <div className="mx-auto h-14 w-14 rounded-full bg-accent flex items-center justify-center">
+                  <Scale className="h-7 w-7 text-accent-foreground" />
+                </div>
+
+                <h2 className="mt-5 text-center text-xl font-semibold">Before you do</h2>
+
+                <p className="mt-1.5 text-center text-sm text-muted-foreground">
+                  {formatCurrency(amt)} · {label}
+                  {selectedBucket ? ` · ${selectedBucket.name}` : ""}
+                </p>
+
+                <div className="mt-5 flex items-stretch gap-2">
+                  <div className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-center">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                      You called it
+                    </p>
+                    <p className="mt-1 text-lg font-semibold capitalize">{intent}</p>
+                  </div>
+                  <div className="flex items-center text-muted-foreground text-sm">vs</div>
+                  <div className="flex-1 rounded-2xl border-2 border-primary/40 bg-accent/40 px-4 py-3 text-center">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-primary/80">
+                      Bucket thinks
+                    </p>
+                    <p className="mt-1 text-lg font-semibold capitalize">{preview.verdict}</p>
+                  </div>
+                </div>
+
+                <blockquote className="mt-5 rounded-2xl bg-secondary/60 px-4 py-3.5 text-sm leading-relaxed text-foreground">
+                  {preview.reasoning}
+                </blockquote>
+
+                {preview.attribution && (
+                  <p className="mt-2.5 text-center text-[11px] leading-relaxed text-muted-foreground">
+                    Screened by{" "}
+                    <span className="text-foreground/75 font-medium">
+                      {shortModelName(preview.attribution.screened)}
+                    </span>
+                    {preview.attribution.adjudicated && (
+                      <>
+                        , escalated to{" "}
+                        <span className="text-foreground/75 font-medium">
+                          {shortModelName(preview.attribution.adjudicated)}
+                        </span>
+                      </>
+                    )}
+                    {preview.attribution.provider === "token-factory" && " on Nebius Token Factory"}
+                  </p>
+                )}
+
+                {preview.question && (
+                  <p className="mt-5 text-center text-sm font-medium leading-relaxed">
+                    {preview.question}
+                  </p>
+                )}
+
+                <div className="mt-6 grid gap-2">
+                  <Button
+                    onClick={() => commitWithPreview(false)}
+                    className="h-12 rounded-xl text-base"
+                  >
+                    Buy it anyway
+                  </Button>
+                  {preview.question && (
+                    <Button
+                      variant="outline"
+                      onClick={() => commitWithPreview(true)}
+                      className="h-12 rounded-xl text-base"
+                    >
+                      Let me explain
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={sleepOnIt}
+                    className="h-12 rounded-xl text-base"
+                  >
+                    <Moon className="mr-1.5 h-4 w-4" />
+                    Put it in the tray instead
+                  </Button>
+                </div>
+
+                <p className="mt-4 text-center text-[11px] leading-relaxed text-muted-foreground/80">
+                  Nothing has been spent yet. Bucket is reading your own spending back to you, and
+                  it can be wrong.
+                </p>
               </div>
             </motion.div>
           )}

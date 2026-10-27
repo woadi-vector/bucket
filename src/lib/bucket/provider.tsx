@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import {
   DEFAULT_BUCKET_ACCENT,
   DEFAULT_BUCKET_ICON_KEY,
+  PurchaseVerdict,
   ReadinessTag,
   SAVINGS_BUCKET_ID,
   Trip,
@@ -58,6 +59,13 @@ type UiState = {
   retractionFor: string | null;
 };
 
+/** A verdict the purchase flow already has in hand when it commits the purchase. */
+export type SettledVerdict = {
+  verdict: PurchaseVerdict;
+  /** Open the card afterwards, so the person can answer the question it asked. */
+  openArgument?: boolean;
+};
+
 type PurchaseInput = {
   amount: number;
   label: string;
@@ -84,7 +92,25 @@ type SleepInput = {
 };
 
 export type BucketActions = {
-  confirmPurchase: (data: PurchaseInput) => void;
+  /**
+   * Log a purchase.
+   *
+   * `settled` carries a verdict the purchase flow already obtained and showed. When it is
+   * present no second call is made: the argument has been had, and asking again could return
+   * a different answer than the one the person just decided about.
+   */
+  confirmPurchase: (data: PurchaseInput, settled?: SettledVerdict) => void;
+  /**
+   * Ask about a purchase before it is made, for the flow to show in time.
+   *
+   * Resolves to null when nothing usable came back. Never dispatches.
+   */
+  previewVerdict: (subject: {
+    amount: number;
+    label: string;
+    intent: "want" | "need";
+    readinessTag: ReadinessTag | null;
+  }) => Promise<PurchaseVerdict | null>;
   sleepOnIt: (data: SleepInput) => void;
   confirmPending: (id: string) => void;
   letItGo: (id: string, sourceRect?: DOMRect) => void;
@@ -264,7 +290,71 @@ export function BucketProvider({
     },
   );
 
-  const confirmPurchase = useEvent((data: PurchaseInput) => {
+  /**
+   * Asks the engine about a purchase that has not been made yet.
+   *
+   * The same screening call as {@link requestVerdictFor}, started while the person is still
+   * choosing a bucket rather than after the money has moved. Nothing is dispatched: the
+   * answer goes back to the caller, which decides whether it arrived in time to be worth
+   * showing before the purchase commits.
+   *
+   * `bucketName` is deliberately absent. It is optional in the engine's request and the
+   * prompt simply drops that line, which is what makes starting early possible at all: the
+   * label, the tag and the person's own history carry the judgement, and the bucket is
+   * context rather than evidence.
+   *
+   * Resolves to null on any failure. A preview that cannot be had is not an error worth
+   * showing anyone, and the ordinary post-purchase path still runs behind it.
+   */
+  const previewVerdict = useEvent(
+    async (subject: {
+      amount: number;
+      label: string;
+      intent: "want" | "need";
+      readinessTag: ReadinessTag | null;
+    }): Promise<PurchaseVerdict | null> => {
+      const bucketName = (id: string) => state.buckets.find((b) => b.id === id)?.name;
+      const history = state.transactions.slice(0, 20).map((t) => ({
+        amount: t.amount,
+        label: t.label,
+        intent: t.intent,
+        readinessTag: t.readinessTag,
+        timestamp: t.timestamp,
+        bucketName: bucketName(t.bucketId),
+      }));
+
+      try {
+        const verdict = await requestVerdict({
+          data: {
+            purchase: {
+              amount: subject.amount,
+              label: subject.label,
+              intent: subject.intent,
+              readinessTag: subject.readinessTag,
+            },
+            history,
+          },
+        });
+
+        return {
+          agrees: verdict.agrees,
+          verdict: verdict.verdict,
+          confidence: verdict.confidence,
+          reasoning: verdict.reasoning,
+          ...(verdict.cached ? { cached: true } : {}),
+          ...(verdict.withheld ? { withheld: true } : {}),
+          ...(verdict.question ? { question: verdict.question } : {}),
+          ...(verdict.exchangeId ? { exchangeId: verdict.exchangeId } : {}),
+          ...(verdict.attribution ? { attribution: verdict.attribution } : {}),
+        };
+      } catch (error) {
+        console.error("[bucket] verdict preview failed", error);
+        return null;
+      }
+    },
+  );
+
+  const confirmPurchase = useEvent((data: PurchaseInput, settled?: SettledVerdict) => {
     const id = crypto.randomUUID();
     dispatch({
       type: "CONFIRM_PURCHASE",
@@ -276,12 +366,20 @@ export function BucketProvider({
         intent: data.intent,
         timestamp: Date.now(),
         readinessTag: data.readinessTag ?? null,
-        verdict: null,
+        verdict: settled?.verdict ?? null,
       },
     });
     pulse(data.bucketId);
     if (data.intent === "need") playNeed();
     else playWant();
+
+    // An answer the purchase flow already has. Asking again would spend a second call on a
+    // question that has been answered and could come back differently, which would leave the
+    // person looking at an argument other than the one they just decided about.
+    if (settled?.verdict) {
+      if (settled.openArgument) patchUi({ retractionFor: id });
+      return;
+    }
 
     // Fire and forget — see requestVerdictFor. Nothing below waits on this.
     requestVerdictFor(
@@ -603,6 +701,7 @@ export function BucketProvider({
   const actions = useMemo<BucketActions>(
     () => ({
       confirmPurchase,
+      previewVerdict,
       sleepOnIt,
       confirmPending,
       letItGo,
@@ -632,6 +731,7 @@ export function BucketProvider({
     // identity. Consumers can hold it indefinitely without going stale.
     [
       confirmPurchase,
+      previewVerdict,
       sleepOnIt,
       confirmPending,
       letItGo,
