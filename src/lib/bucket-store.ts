@@ -153,6 +153,30 @@ export type PurchaseVerdict = {
    * {@link VerdictAttribution} for why this one piece of telemetry crosses to the browser.
    */
   attribution?: VerdictAttribution;
+  /**
+   * What Bucket wants to ask before it reclassifies anything.
+   *
+   * Present only on a spoken contest. It is an invitation rather than a gate: the person can
+   * ignore it, answer it, or override the verdict outright, and the purchase stands either
+   * way until they say otherwise.
+   */
+  question?: string;
+  /**
+   * The stored challenge this verdict belongs to.
+   *
+   * Carried so an explanation can be attached to the exact exchange it answers. Absent is
+   * normal and not an error: the write may have failed, and the log writes a standalone row
+   * in that case rather than losing the reconsideration.
+   */
+  exchangeId?: string;
+  /**
+   * Set only on a reconsideration: whether the explanation changed Bucket's mind.
+   *
+   * Derived server-side from the new verdict rather than reported by the model, for the same
+   * reason `agrees` is. This decides which of two opposite things a person is told, so it
+   * must never rest on a model being asked to restate a judgement it already made.
+   */
+  explanationAccepted?: boolean;
 };
 
 export type Transaction = {
@@ -172,6 +196,14 @@ export type Transaction = {
    * is the second half. `null` means they have not been asked yet or the engine agreed.
    */
   verdictResponse?: VerdictResponse | null;
+  /**
+   * Bucket's answer after the person explained themselves.
+   *
+   * Kept beside the original verdict rather than replacing it, because the card has to show
+   * both: the argument that was made, and what happened to it. Overwriting would leave a
+   * person looking at a conclusion with no record of what it was a conclusion about.
+   */
+  reconsideration?: PurchaseVerdict | null;
 };
 
 /**

@@ -28,7 +28,8 @@
     "check:seed": "node scripts/check-seed.mjs",
     "check:cover": "node scripts/check-cover.mjs",
     "check:placement": "node scripts/check-placement.mjs",
-    "check:attribution": "node scripts/check-attribution.mjs"
+    "check:attribution": "node scripts/check-attribution.mjs",
+    "check:reconsideration": "node scripts/check-reconsideration.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
