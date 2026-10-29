@@ -11,7 +11,7 @@ import { isLiveContest } from "@/lib/reconsideration";
  * nothing reports a fault.
  */
 
-export type NextStep = "askParent" | "intercept" | "secondThought" | "commit";
+export type NextStep = "askParent" | "intercept" | "secondThought" | "checking" | "commit";
 
 export type RoutingInput = {
   bucket: Bucket;
@@ -27,6 +27,16 @@ export type RoutingInput = {
    * the app is telling them the number is.
    */
   sleepThreshold: number;
+  /**
+   * Whether the screening call is still out.
+   *
+   * Someone who knows the flow taps a bucket in well under the two seconds the model takes,
+   * so without this the answer lands after the decision it was about and the argument
+   * degrades into an offer to undo. Waiting the remainder is the honest thing: the call is
+   * already running, and a second of "checking this" is not the multi-second dead stop this
+   * path was built to avoid.
+   */
+  previewPending?: boolean;
 };
 
 /**
@@ -60,6 +70,12 @@ export function nextStepAfterBucket(input: RoutingInput): NextStep {
 
   if (isLiveContest(preview)) {
     return "secondThought";
+  }
+
+  // Nothing came back yet. Hold rather than commit: the answer is seconds away and a purchase
+  // committed in the gap turns the disagreement into an undo.
+  if (!preview && input.previewPending) {
+    return "checking";
   }
 
   return "commit";

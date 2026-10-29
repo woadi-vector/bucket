@@ -248,7 +248,61 @@ const route = (over) =>
   );
 }
 
-// 6. The guard itself.
+// 6. Holding for an answer that is still out.
+//
+//    Someone who knows the flow taps a bucket in well under the two seconds the model takes.
+//    Committing in that gap is what turns the disagreement into an offer to undo one, which
+//    is the thing this whole path exists to prevent.
+{
+  const pending = (over) =>
+    nextStepAfterBucket({
+      bucket: self,
+      amount: 20,
+      intent: "need",
+      spent: 0,
+      sleepThreshold: SLEEP_THRESHOLD,
+      previewPending: true,
+      ...over,
+    });
+
+  check("pending: holds rather than committing", pending({}) === "checking");
+  check(
+    "pending: an answer already in hand is not waited for",
+    pending({ preview: contest }) === "secondThought",
+  );
+  check(
+    "pending: an agreement that already landed commits",
+    pending({ preview: { ...contest, agrees: true } }) === "commit",
+    "there is nothing further to wait for",
+  );
+  check(
+    "pending: a withheld answer that landed commits",
+    pending({ preview: { ...contest, withheld: true } }) === "commit",
+    "a silence is an answer, and waiting past it would leak that one exists",
+  );
+  check(
+    "pending: the child limit still comes first",
+    pending({ bucket: kid, spent: 30 }) === "askParent",
+    "a parent's rule is not held up by a model call",
+  );
+  check(
+    "pending: the sleep threshold still comes first",
+    pending({ amount: SLEEP_THRESHOLD + 1, intent: "want" }) === "intercept",
+  );
+  check(
+    "pending: nothing in flight still commits",
+    nextStepAfterBucket({
+      bucket: self,
+      amount: 20,
+      intent: "need",
+      spent: 0,
+      sleepThreshold: SLEEP_THRESHOLD,
+    }) === "commit",
+    "the flag absent is the old behaviour, unchanged",
+  );
+}
+
+// 7. The guard itself.
 check("no network calls attempted", fetchAttempts === 0, `fetch=${fetchAttempts}`);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

@@ -14,9 +14,10 @@ import {
 } from "@/lib/bucket-store";
 import { orderForPlacement } from "@/lib/placement";
 import { nextStepAfterBucket } from "@/lib/purchase-routing";
+import { isLiveContest } from "@/lib/reconsideration";
 import { useBucketState } from "@/lib/bucket/provider";
 import { cn } from "@/lib/utils";
-import { Check, Moon, Zap, Send, Scale } from "lucide-react";
+import { Check, Moon, Zap, Send, Scale, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type Step =
@@ -24,6 +25,7 @@ type Step =
   | "intent"
   | "readiness"
   | "bucket"
+  | "checking"
   | "secondThought"
   | "intercept"
   | "askParent"
@@ -193,7 +195,7 @@ export function PurchaseFlow({
   useEffect(() => {
     if (step !== "bucket" || !amtValid || !intent || preview || previewing) return;
 
-    let live = true;
+    const live = true;
     setPreviewing(true);
     void onPreviewVerdict({
       amount: amt,
@@ -208,9 +210,11 @@ export function PurchaseFlow({
         if (live) setPreviewing(false);
       });
 
-    return () => {
-      live = false;
-    };
+    // Deliberately no cleanup that cancels. An earlier version set `live` false on every step
+    // change, which meant tapping a bucket threw away the very answer the tap was waiting
+    // for. The dialog's own reset clears `preview` when a new purchase starts, which is the
+    // only moment a stale answer could do harm.
+    void live;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
@@ -231,11 +235,36 @@ export function PurchaseFlow({
       spent: Math.max(0, startingBalances[b.id] - b.balance),
       preview,
       sleepThreshold,
+      previewPending: previewing,
     });
 
     if (next === "commit") finalize(b.id);
     else setStep(next);
   };
+
+  /**
+   * Leaves the holding state as soon as there is something to say, or after the cap.
+   *
+   * The cap matters more than the wait. A screening call that stalls must not strand someone
+   * mid-purchase, so after it the purchase proceeds and the argument arrives the old way.
+   */
+  useEffect(() => {
+    if (step !== "checking" || !bucketId) return;
+
+    const settle = () => {
+      if (isLiveContest(preview)) setStep("secondThought");
+      else finalize(bucketId);
+    };
+
+    if (!previewing) {
+      settle();
+      return;
+    }
+
+    const cap = window.setTimeout(settle, 3000);
+    return () => window.clearTimeout(cap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, previewing, preview]);
 
   const finalize = (
     bId: string,
@@ -514,6 +543,35 @@ export function PurchaseFlow({
             costs nothing. Bucket advises; the person decides, and the only thing that has
             changed is that they get to decide knowing.
           */}
+          {/*
+            The last second of the screening call, made visible.
+
+            Nothing is charged here and nothing is being decided: the call was already
+            running while the bucket list was open, and this is only the remainder of it. It
+            is named rather than spun silently because a person who just tapped a button is
+            owed an account of why the screen has not moved, and because what it says is
+            true: a model is reading their spending history right now.
+          */}
+          {step === "checking" && (
+            <motion.div
+              key="checking"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              <div className="p-10 text-center">
+                <Loader2 className="mx-auto h-7 w-7 animate-spin text-muted-foreground" />
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Checking this against your history
+                </p>
+                <p className="mt-1.5 text-xs text-muted-foreground/70 tabular-nums">
+                  {formatCurrency(amt)} · {label}
+                </p>
+              </div>
+            </motion.div>
+          )}
+
           {step === "secondThought" && preview && (
             <motion.div
               key="secondThought"
