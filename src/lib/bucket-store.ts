@@ -64,7 +64,7 @@ export type Bucket = {
    * {@link resolveBucketTag}, never directly, so an old bucket gets a sensible default.
    */
   tag?: BucketTag;
-  /** Wants at or above this many dollars wait in Sleep On It. Unset means SLEEP_THRESHOLD. */
+  /** Wants at or above this many dollars wait in Sleep On It. Unset means the person's sleep threshold. */
   holdThreshold?: number | null;
 };
 
@@ -81,11 +81,20 @@ const DEFAULT_TAG_BY_ICON: Record<BucketIconKey, BucketTag> = {
 export const resolveBucketTag = (bucket: Pick<Bucket, "tag" | "iconKey">): BucketTag =>
   bucket.tag ?? DEFAULT_TAG_BY_ICON[bucket.iconKey] ?? "want";
 
-/** The bucket's own hold threshold in dollars, or the app default. */
-export const resolveHoldThreshold = (bucket: Pick<Bucket, "holdThreshold">): number =>
+/**
+ * The bucket's own hold threshold in dollars; failing that, the person's own sleep threshold;
+ * failing that, the app default. A bucket-level number wins because it is the more specific
+ * choice, and the person's setting comes before ours for the reason it exists at all.
+ */
+export const resolveHoldThreshold = (
+  bucket: Pick<Bucket, "holdThreshold">,
+  personDefault?: number,
+): number =>
   typeof bucket.holdThreshold === "number" && bucket.holdThreshold >= 0
     ? bucket.holdThreshold
-    : SLEEP_THRESHOLD;
+    : typeof personDefault === "number" && Number.isFinite(personDefault) && personDefault >= 0
+      ? personDefault
+      : DEFAULT_SLEEP_THRESHOLD;
 
 /** How a person answered a contested tag. Bucket advises; this is them deciding. */
 export type VerdictResponse = "retracted" | "overridden";

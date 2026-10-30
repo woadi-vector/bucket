@@ -35,7 +35,7 @@ export type PolicyDecision = {
   reason: string;
 };
 
-/** Matches SLEEP_THRESHOLD in src/lib/bucket-store.ts, in cents. */
+/** Matches DEFAULT_SLEEP_THRESHOLD in src/lib/bucket-store.ts, in cents. */
 export const DEFAULT_HOLD_THRESHOLD_CENTS = 4000;
 
 export function decidePolicy(input: PolicyInput): PolicyDecision {

@@ -260,7 +260,7 @@ export async function runShop(input: ShopInput): Promise<ShopResult> {
 
   const bucket = buckets.find((b) => b.id === choice.bucketId) ?? wantBucket;
   const tag = resolveBucketTag(bucket);
-  const holdThresholdCents = toCents(resolveHoldThreshold(bucket));
+  const holdThresholdCents = toCents(resolveHoldThreshold(bucket, state?.sleepThreshold));
 
   // 3. Screen, for need buckets only.
   const screen = tag === "need" ? await screenPurchase(sessionId, product, bucket, state) : skip();
